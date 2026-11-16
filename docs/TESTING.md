@@ -1,6 +1,6 @@
 # Testing strategy
 
-Status: M0 foundation checks are implemented; business and AI release suites are future work. Tooling is locked, and the commands below exercise real foundation behaviour. See the verification record for what was actually run; a configured workflow is not proof of a remote CI run.
+Status: M0 foundation complete, 16 November 2026. Remote CI and fresh Windows checkout verification are recorded below. Business and AI release suites are future work. Tooling is locked, and the commands below exercise real foundation behaviour.
 
 ## M0 commands
 
@@ -52,7 +52,7 @@ Environment: Windows 11 Pro, CPython 3.14.10, uv 0.13.8, Node 24.13.0/npm 11.6.2
 
 The browser smoke used existing bundled tooling and saved ignored screenshots under `.tools/screenshots/`. It is a local foundation check, not a committed business end-to-end suite. The uv-managed interpreter/environment are local ignored setup artifacts, not committed dependencies.
 
-Remaining M0 evidence: independent clean checkout on another environment and the configured GitHub Actions workflow running remotely. Linux CI is configured but has not been executed from this local repository. The historical Windows servicing limitation remains an operating concern. V0 agricultural evidence, business authorization, proposal transactions, durable jobs and all later release gates remain unimplemented/unverified.
+At this initial local checkpoint, clean-checkout verification and remote CI were still pending. The completion record below supersedes that gap. The historical Windows servicing limitation remains an operating concern. V0 agricultural evidence, business authorization, proposal transactions, durable jobs and all later release gates remain unimplemented/unverified.
 
 ## Initial local commit review - 16 November 2026
 
@@ -61,6 +61,30 @@ The pre-commit review reran the documented non-integration backend command (9 pa
 Docker Desktop's Linux engine was stopped during this review. The attempted full backend suite was interrupted while waiting for its database connection; database integration and worker readiness were not reverified for this commit. Their earlier successful results above are historical evidence. No service startup, deployment or business implementation was performed in this review. Remote CI and an independent clean checkout remain unverified.
 
 The initial local commit includes documentation, foundation source, manifests, dependency lockfiles and CI configuration. Local credentials, installed dependencies, private data, caches, local tools and generated exports remain ignored. No remote is configured and no push is part of this checkpoint.
+
+## M0 completion: CI and fresh checkout - 16 November 2026
+
+[GitHub Actions run 43828618767](https://github.com/Ushan-Srinuka/WagaMaga/actions/runs/43828618767), for commit `62c6c625c47822ebd8ac04388f449fc407c87770`, completed successfully. The backend job passed locked installation, lint/format, PostgreSQL/pgvector startup, migration, database-required tests, separate worker startup and container shutdown. The frontend job passed clean installation, lint, format, tests and production build. Failure-only database diagnostics were correctly skipped.
+
+A separate clone of that published commit was created under ignored `.tools/m0-clean-checkout/` on this Windows machine. It started without .env, installed dependency directories or private data. The documented project-local uv bootstrap, `uv sync --locked` and `npm ci` succeeded; the clone used the already available pinned CPython 3.14.10 interpreter and created its own environment and dependency directories. This is a fresh source/dependency checkout on the existing host, not a claim that a second Windows machine or an OS installation was tested.
+
+The initial clone exposed a Windows failure: default Git CRLF conversion made Prettier reject four frontend files. Setting the default Git text policy to LF in `.gitattributes`, with the existing PowerShell CRLF exception retained, fixed it. The four files were restored from Git with `core.autocrlf=true` after that change; `git ls-files --eol` confirmed LF working copies and Prettier passed. Their source contents did not change. All results below include this correction.
+
+| Fresh-checkout check | Actual outcome |
+| --- | --- |
+| Locked installs | Fresh uv bootstrap and Python environment, `uv sync --locked`, `npm ci`; npm reported zero audit findings |
+| Static checks | Ruff check/format, ESLint and Prettier passed |
+| Backend | `pytest --require-database`: 12 passed, including all 3 real PostgreSQL tests |
+| Frontend | 2 tests passed; strict TypeScript and production build passed |
+| Database | New isolated Compose project `wagamaga-m0-verify`, new named volume and generated credentials; port 55433 kept it separate from the normal 55432 setup |
+| Migration/readiness | `alembic upgrade head` succeeded; live API returned `ready`, revision `0001_foundation` and pgvector `0.8.7` |
+| Separate worker | `python -m app.worker --once` reported database ready and exited successfully |
+| Actual startup/browser | API on localhost:8000 and Vite on localhost:5173; 360px/1280px browser checks passed real connectivity, retry, no horizontal scroll and no page errors; Swagger rendered through Vite |
+| Exclusions | Clone credentials, local tools, private data, Python environment, node_modules and build output remained ignored |
+
+To isolate this verification, the documented configuration command used `--port 55433` and Compose commands used `-p wagamaga-m0-verify`. The normal database project/volume and original credentials were not changed. The temporary API and Vite processes were stopped, and `docker compose -p wagamaga-m0-verify down` removed the verification containers/network while preserving the volume. No deployment or business feature was added. The existing bundled browser tooling ran the foundation smoke check; its script/screenshots and the clone are ignored artifacts.
+
+M0's foundation exit criteria are met. This does not verify production hosting, OS servicing, private-user access, AI quality or any later business milestone. User management is the next requested scope and remains unimplemented.
 
 ## Selected tools and evaluation methods
 

@@ -1,8 +1,10 @@
 # Build roadmap
 
-Status: M0 scaffold implemented and local foundation checks exercised; V0 and later releases remain pending. TESTING.md records the local evidence. A remote CI run and an independent clean checkout remain unverified; do not claim those gates complete.
+Status: M0 complete, 16 November 2026. Remote foundation CI passed for published commit 62c6c62. A fresh Windows clone installed the locked dependencies and passed foundation checks and actual startup after correcting the Git line-ending policy. TESTING.md records the evidence and limits. V0 and later releases remain pending.
 
-Local checkpoint: 12 backend tests and 2 frontend tests pass; lint/format/build checks, actual PostgreSQL/pgvector readiness, migration/application-role checks, worker startup and responsive browser smoke checks pass. No business feature has been added. Review the foundation and complete the remaining M0 evidence before marking the whole milestone complete.
+Local checkpoint: 12 backend tests and 2 frontend tests pass in the fresh clone; lint/format/build checks, actual PostgreSQL/pgvector readiness, migration/application-role checks, separate worker startup and responsive browser smoke checks pass. No business feature has been added. M0 completion does not establish production readiness or a supported Windows servicing state.
+
+Next requested scope: user management only, brought forward from M2. Plan its authentication/session and account-management decisions and acceptance checks before implementation. Farms, cultivation, knowledge, AI, proposals and weather are outside that next task; advisor case sharing remains with the later case workflow. Completing identity early will not complete M2. The V0/V1 sections below remain the subsequent product roadmap.
 
 ## M0: reproducible foundation - first build milestone
 

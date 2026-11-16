@@ -4,7 +4,7 @@ WagaMaga AI helps Sri Lankan farmers find cited cultivation guidance and review 
 
 ## Current status
 
-M0 foundation scaffold, 15 November 2026: React connection screen, FastAPI health/OpenAPI endpoints, a separate worker entry point, PostgreSQL/pgvector, Alembic, locked dependencies and GitHub Actions configuration. Authentication, farms, RAG, proposals, advisor review and weather features are not implemented.
+M0 foundation complete, 16 November 2026: React connection screen, FastAPI health/OpenAPI endpoints, a separate worker entry point, PostgreSQL/pgvector, Alembic, locked dependencies and GitHub Actions checks. Clean-checkout verification and the Windows line-ending fix are recorded in TESTING.md. Authentication, farms, RAG, proposals, advisor review and weather features are not implemented. The next requested scope is user management only; planning and implementation remain pending.
 
 ## Stack
 
@@ -56,4 +56,4 @@ The setup script generates ignored local credentials and preserves an existing `
 - [SRS](docs/WagaMaga_AI_SRS.md), [architecture](docs/WagaMaga_AI_System_Architecture.md) and [decisions](docs/DECISIONS.md)
 - [Complete documentation index](docs/README.md), [contribution guide](CONTRIBUTING.md) and [security](SECURITY.md)
 
-The exported PDF in `output/pdf/` is a dated documentation snapshot from before scaffolding. Current Markdown and code are authoritative. CI is configured; a local verification result is not a claim that a remote GitHub Actions run has occurred.
+The exported PDF in `output/pdf/` is a dated documentation snapshot from before scaffolding. Current Markdown and code are authoritative. [Foundation CI passed for the initial published commit](https://github.com/Ushan-Srinuka/WagaMaga/actions/runs/43828618767); TESTING.md records the separate clean-checkout evidence and remaining product/operating limits.

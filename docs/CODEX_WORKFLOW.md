@@ -1,6 +1,6 @@
 # Building WagaMaga AI with Codex
 
-Status: step-by-step workflow, 15 November 2026. Tooling is accepted and the user has authorized the M0 scaffold. Foundation code/checks exist; business implementation has not started. Run one numbered stage at a time and inspect its evidence before moving to dependent work.
+Status: M0 complete, 16 November 2026; business implementation has not started. The next requested scope is user management only, brought forward from M2. Plan that bounded milestone and its unresolved decisions before coding. The V0 stages below remain future workflow templates. Run one stage at a time and inspect its evidence before moving to dependent work.
 
 Codex recognizes repository instructions in AGENTS.md. Other filenames here are project conventions; they are not all automatically loaded as instructions. Name the relevant guide in each task. Keep durable rules in AGENTS.md and specific acceptance details in the task. This follows [official AGENTS.md guidance](https://learn.chatgpt.com/docs/agent-configuration/agents-md) and [OpenAI's workflow example](https://developers.openai.com/cookbook/examples/codex/iterating-development-workflows-with-codex).
 
@@ -170,4 +170,4 @@ Run AT01-AT12, the 30-question evaluation, frontend/browser checks, measured lat
 
 At each checkpoint, update the roadmap with actual completion/evidence and the decision register with resolved choices. Update the API/UI/database/setup guides when contracts change. A new Codex chat should be able to determine the current state from the repository and tests without relying on hidden conversation history.
 
-Current checkpoint: the user authorized and received the M0 scaffold. Follow DEVELOPMENT.md to run it and inspect TESTING.md for verified results and remaining gates. V0/business features need a subsequent scoped task. The historical prerequisite audit remains dated evidence, not the current installed-tool state.
+Current checkpoint: M0 is complete; TESTING.md records successful remote CI and fresh Windows checkout startup, including the Git line-ending correction. The next requested scope is user management only: registration, login/logout, sessions, roles, administrator account management, relevant screens and permission tests. Authentication and account-management choices still need a bounded planning task in DECISIONS.md; do not infer their acceptance or implement unrelated features. Case sharing and farm/AI workflows remain later work. The historical prerequisite audit remains dated evidence, not the current installed-tool state.

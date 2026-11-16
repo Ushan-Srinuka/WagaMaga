@@ -1,6 +1,6 @@
 # Development guide
 
-Status: M0 scaffold created on 15 November 2026. React, FastAPI health routes, a separate worker entry point, Alembic and PostgreSQL/pgvector configuration are present. Business features remain unimplemented. See TESTING.md for actual verification evidence and remaining gates.
+Status: M0 foundation complete on 16 November 2026. React, FastAPI health routes, a separate worker entry point, Alembic and PostgreSQL/pgvector configuration are present. Fresh-checkout startup and remote CI are verified in TESTING.md. Business features remain unimplemented.
 
 ## M0 local setup
 
@@ -16,7 +16,7 @@ docker compose up -d --wait
 
 The configuration generator is standard-library-only and also works with the existing Python 3.13 installation. The commands above use the uv-managed interpreter so an extra system Python is not required once uv is available. It creates ignored `.env` credentials once, never prints them and never overwrites an existing file. PostgreSQL is published on `127.0.0.1:55432`; port 5432 was unavailable on this machine. The database container listens on its normal internal port 5432. Relative document storage paths resolve from the repository root in both API and worker.
 
-The PowerShell uv wrapper uses a global uv executable if available, otherwise the ignored `.tools/uv/bin/uv.exe` copy used during scaffolding. It runs in `backend/`, stores downloaded Python/cache files under `.tools/`, and uses backend/.python-version. New checkouts need uv installed first; the ignored tools are not part of Git. The scaffold was verified with uv 0.13.8, CPython 3.14.10, Node 24.13.0 and npm 11.6.2. Existing Python installations were not removed and Windows was not updated.
+The PowerShell uv wrapper uses a global uv executable if available, otherwise the ignored `.tools/uv/bin/uv.exe` copy used during scaffolding. It runs in `backend/`, stores downloaded Python/cache files under `.tools/`, and uses backend/.python-version. New checkouts need uv installed first; the ignored tools are not part of Git. The scaffold was verified with uv 0.13.8, CPython 3.14.10, Node 24.13.0 and npm 11.6.2. Existing Python installations were not removed and Windows was not updated. Git attributes enforce LF text files on every platform, except PowerShell scripts use CRLF; this keeps fresh Windows checkouts compatible with Prettier's LF formatting.
 
 When global uv is unavailable, the equivalent project-local bootstrap used here is:
 

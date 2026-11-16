@@ -1,6 +1,6 @@
 # Documentation index
 
-Status: M0 scaffold, 15 November 2026. Foundation code and checks exist; business features remain unimplemented. DEVELOPMENT.md has startup commands and TESTING.md distinguishes actual results from future acceptance gates. The earlier exported PDF is a dated snapshot, not a live mirror of these files.
+Status: M0 foundation complete, 16 November 2026. Remote CI and fresh Windows checkout verification are recorded in TESTING.md. Business features remain unimplemented; the next requested scope is user management only. DEVELOPMENT.md has startup commands. The earlier exported PDF is a dated snapshot, not a live mirror of these files.
 
 ## Requirements and design
 
