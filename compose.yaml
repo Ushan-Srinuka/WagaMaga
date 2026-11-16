@@ -1,0 +1,28 @@
+name: wagamaga
+
+services:
+  db:
+    # Verified linux/amd64 PG18 image digest; update deliberately with integration checks.
+    image: pgvector/pgvector:pg18-bookworm@sha256:4bdc16048580b56345bca441bffe8d9b45dd2f5d76963808c853df1661df6e00
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Run scripts/configure_local.py first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/configure_local.py first}
+      POSTGRES_DB: postgres
+      APP_DB_USER: ${APP_DB_USER:?Set APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
+      APP_DB_NAME: ${APP_DB_NAME:-wagamaga}
+      TEST_DB_NAME: ${TEST_DB_NAME:-wagamaga_test}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./scripts/database/01-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres_data:

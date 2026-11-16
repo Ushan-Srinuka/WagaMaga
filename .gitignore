@@ -1,0 +1,37 @@
+# Local configuration and private material
+.env
+.env.*
+!.env.example
+!**/.env.example
+.tools/
+.data/
+storage/
+uploads/
+backups/
+
+# Python
+**/.venv/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.pytest-cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+**/*.egg-info/
+
+# Frontend and generated checks
+**/node_modules/
+**/dist/
+**/coverage/
+**/*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Local tools, scratch files and dated artifact exports
+tmp/
+output/
+*.log
+.DS_Store
+.idea/
+.vscode/

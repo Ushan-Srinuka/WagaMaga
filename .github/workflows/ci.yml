@@ -1,0 +1,64 @@
+name: Foundation checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - name: Install locked Python dependencies
+        run: uv sync --locked
+      - name: Python lint and formatting
+        run: |
+          uv run ruff check . ../scripts/configure_local.py --config pyproject.toml
+          uv run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+      - name: Create disposable local configuration
+        run: uv run python ../scripts/configure_local.py --port 55432
+      - name: Start PostgreSQL with pgvector
+        working-directory: .
+        run: docker compose up -d --wait
+      - name: Apply foundation migration
+        run: uv run alembic upgrade head
+      - name: Test rules, API and real PostgreSQL permissions
+        run: uv run pytest --require-database
+      - name: Check separate worker startup
+        run: uv run python -m app.worker --once
+      - name: Database failure diagnostics
+        if: failure()
+        working-directory: .
+        run: docker compose logs --tail 100 db
+      - name: Stop CI containers
+        if: always()
+        working-directory: .
+        run: docker compose down
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build

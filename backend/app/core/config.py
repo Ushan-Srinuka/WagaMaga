@@ -1,0 +1,65 @@
+"""Typed, provider-independent configuration shared by the API and worker."""
+
+from pathlib import Path
+from typing import Literal
+from urllib.parse import urlsplit
+
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    app_env: Literal["development", "test", "production"] = "development"
+    database_url: SecretStr | None = None
+    migration_database_url: SecretStr | None = None
+    test_database_url: SecretStr | None = None
+    test_migration_database_url: SecretStr | None = None
+    app_db_user: str = Field(default="wagamaga_app", pattern=r"^[a-z_][a-z0-9_]{0,62}$")
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    document_storage_path: Path = PROJECT_ROOT / ".data" / "documents"
+
+    @field_validator("document_storage_path")
+    @classmethod
+    def root_relative_storage(cls, value: Path) -> Path:
+        return value if value.is_absolute() else (PROJECT_ROOT / value).resolve()
+
+    @field_validator(
+        "database_url", "migration_database_url", "test_database_url", "test_migration_database_url"
+    )
+    @classmethod
+    def postgres_only(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None:
+            try:
+                driver = make_url(value.get_secret_value()).drivername
+            except Exception:
+                raise ValueError("A PostgreSQL Psycopg connection URL is required") from None
+            if driver != "postgresql+psycopg":
+                raise ValueError("Use postgresql+psycopg; other database engines are not supported")
+        return value
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def explicit_origins(cls, origins: list[str]) -> list[str]:
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or "*" in origin
+                or parsed.username
+                or parsed.password
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(
+                    "CORS origins must be explicit HTTP(S) origins without credentials"
+                )
+        return [origin.rstrip("/") for origin in origins]
