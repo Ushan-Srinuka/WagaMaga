@@ -4,7 +4,9 @@ WagaMaga AI helps Sri Lankan farmers find cited cultivation guidance and review 
 
 ## Current status
 
-M0 foundation complete, 16 November 2026: React connection screen, FastAPI health/OpenAPI endpoints, a separate worker entry point, PostgreSQL/pgvector, Alembic, locked dependencies and GitHub Actions checks. Clean-checkout verification and the Windows line-ending fix are recorded in TESTING.md. Authentication, farms, RAG, proposals, advisor review and weather features are not implemented. The next requested scope is user management only; planning and implementation remain pending.
+M0 foundation is complete. UM1 user management is implemented locally: farmer registration, login/logout, rotated revocable sessions, own-account display-name editing and administrator account search/detail/role/status actions. Existing React screens now share the selected creamy green/sage theme, local Plus Jakarta Sans typography, rounded cards and forest/sprout actions. Farming, RAG, proposals, advisor case review and weather remain unimplemented. See TESTING.md for current local evidence; the expanded UM1 CI workflow is configured but has not run remotely for these uncommitted changes.
+
+A public homepage opens at `/`, introduces the product and links to registration/login. Its reference-led layout uses a generated chilli-field photo hero, creamy green/sage surfaces, forest/sprout accents, rounded cards and locally hosted Plus Jakarta Sans. Product vision, planned features, the future workflow and trust principles explain the direction; sample panels are labelled illustrative. The combined design foundations are in docs/UI_DESIGN.md. Home remains available without an API connection.
 
 ## Stack
 
@@ -31,7 +33,7 @@ Start each application process in its own terminal from the project root:
 
 ```powershell
 # Terminal 1: API
-.\scripts\uv.ps1 run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+.\scripts\uv.ps1 run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log
 ```
 
 ```powershell
@@ -44,12 +46,19 @@ npm.cmd --prefix frontend run dev
 .\scripts\uv.ps1 run python -m app.worker
 ```
 
-Open the [frontend](http://127.0.0.1:5173), [Swagger](http://127.0.0.1:8000/docs) or [liveness check](http://127.0.0.1:8000/health/live). Readiness at `/health/ready` returns 503 until PostgreSQL, pgvector and the current migration are available. The worker reports readiness; durable job handlers are future work.
+Open the [homepage](http://127.0.0.1:5173) for the public introduction, then choose Create account or Sign in. The homepage works without an API connection; account actions require the API/database. Use [Swagger](http://127.0.0.1:8000/docs) for API exploration and [/connection](http://127.0.0.1:5173/connection) for the original foundation status screen. Readiness at `/health/ready` returns 503 until PostgreSQL, pgvector and migration `0002_identity` are available. The worker reports readiness; durable job handlers are future work.
 
-The setup script generates ignored local credentials and preserves an existing `.env`. Do not commit `.env`, `.tools`, `.data` or uploads. Docker initialization runs only for a new database volume; editing passwords later does not change existing database roles.
+To create the first administrator, run the following in your own terminal after setup/migration and enter the requested name, email and password. The password is hidden; no default administrator is installed. Once an administrator exists, this command refuses further bootstrap attempts. See DEVELOPMENT.md for account and recovery limits.
+
+```powershell
+.\scripts\uv.ps1 run python -m app.modules.identity.cli
+```
+
+The setup script generates ignored local credentials and adds an authentication signing key if the existing `.env` has none, preserving other settings and existing credentials. Do not commit `.env`, `.tools`, `.data` or uploads. Docker initialization runs only for a new database volume; editing passwords later does not change existing database roles. UM1 is a local synthetic-account milestone; recovery, email verification and real-user privacy/deployment gates remain unresolved.
 
 ## Documentation
 
+- [Explain the project in simple English](docs/PROJECT_EXPLAINED.md)
 - [Development setup and exact commands](docs/DEVELOPMENT.md)
 - [Testing and verification record](docs/TESTING.md)
 - [Roadmap](docs/ROADMAP.md) and [Codex workflow](docs/CODEX_WORKFLOW.md)

@@ -1,6 +1,6 @@
 # Deployment and operations
 
-Status: M0 local Compose setup and health/worker entry points exist. No public host, deployed release, backup job or incident process has been configured. DEVELOPMENT.md owns local commands; this guide retains the future deployment and recovery requirements.
+Status: M0 local infrastructure and UM1 account/session controls exist; no public host, deployed release, backup job or incident process has been configured. DEVELOPMENT.md owns startup/interactive administrator setup and TESTING.md owns actual checks. This guide retains future deployment/recovery requirements. Browser fixture servers refuse non-test databases and generate ephemeral synthetic credentials; do not use them as an application startup or account-recovery path.
 
 ## Deployable units
 

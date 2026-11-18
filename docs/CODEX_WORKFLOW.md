@@ -1,6 +1,6 @@
 # Building WagaMaga AI with Codex
 
-Status: M0 complete, 16 November 2026; business implementation has not started. The next requested scope is user management only, brought forward from M2. Plan that bounded milestone and its unresolved decisions before coding. The V0 stages below remain future workflow templates. Run one stage at a time and inspect its evidence before moving to dependent work.
+Status: M0 complete and [UM1 user management](USER_MANAGEMENT.md) implemented locally, 16 November 2026, following the user's explicit backend/frontend request. D19-D23 record selected implementation choices and the warm green UI is connected. TESTING.md records actual results; expanded remote CI remains pending. V0 stages below remain future templates rather than permission to add domains.
 
 Codex recognizes repository instructions in AGENTS.md. Other filenames here are project conventions; they are not all automatically loaded as instructions. Name the relevant guide in each task. Keep durable rules in AGENTS.md and specific acceptance details in the task. This follows [official AGENTS.md guidance](https://learn.chatgpt.com/docs/agent-configuration/agents-md) and [OpenAI's workflow example](https://developers.openai.com/cookbook/examples/codex/iterating-development-workflows-with-codex).
 
@@ -51,6 +51,25 @@ Run the available checks and report what passed, failed or was not run.
 
 Inspect the diff and verify that the documented local startup works. Resolve missing prerequisites or environment permissions explicitly; do not claim unavailable checks passed.
 
+## Next after M0: UM1 user management only
+
+Read USER_MANAGEMENT.md for the implemented scope. The earlier planning-only task was followed by an explicit request to implement the backend/frontend. Choices were selected within that scope and connected screens are now available for review. Current follow-up work is review/publication and remote CI; do not rerun the historical implementation prompt against already implemented tables or bootstrap a default account.
+
+UM1-B persistence/bootstrap, UM1-C backend identity and UM1-D connected screens exist. Local UM1-E tests pass, with expanded remote CI still unverified. Full AT02 remains pending until farm, case, source and job domains exist. Do not add those features just to demonstrate identity or mistake component mocks for server authorization.
+
+Historical first-slice prompt, retained as a template rather than the next task:
+
+```text
+Read AGENTS.md, docs/USER_MANAGEMENT.md and accepted UM1 decisions.
+Implement only UM1-B: identity/session/refresh-token/rate-limit/audit
+persistence, reviewed grants and controlled first-administrator bootstrap.
+Include real PostgreSQL migration, uniqueness, privilege, concurrency and
+rollback checks. Record verified commands in DEVELOPMENT.md/TESTING.md.
+Do not add HTTP authentication, UI, farms, AI, providers or deployment yet.
+```
+
+The numbered V0 workflow below resumes after this early identity milestone. Reuse UM1 identity rather than adding an authentication bypass for seeded demonstrations.
+
 ## 4. Prepare the V0 evidence and evaluation cases
 
 ```text
@@ -75,7 +94,7 @@ tests. Do not claim full public authentication or all farm CRUD is complete.
 Update setup commands and the roadmap with actual results.
 ```
 
-Real multi-user access must wait for implemented authentication and object authorization. The V0 exception is a local synthetic demo, not permission to expose private records publicly.
+Reuse UM1 identity if implemented. Real multi-user access must still wait for object authorization and resolved privacy/operating gates. The V0 exception is a local synthetic demo, not permission to expose private records publicly.
 
 ## 6. Build curated ingestion and cited advisory
 
@@ -170,4 +189,4 @@ Run AT01-AT12, the 30-question evaluation, frontend/browser checks, measured lat
 
 At each checkpoint, update the roadmap with actual completion/evidence and the decision register with resolved choices. Update the API/UI/database/setup guides when contracts change. A new Codex chat should be able to determine the current state from the repository and tests without relying on hidden conversation history.
 
-Current checkpoint: M0 is complete; TESTING.md records successful remote CI and fresh Windows checkout startup, including the Git line-ending correction. The next requested scope is user management only: registration, login/logout, sessions, roles, administrator account management, relevant screens and permission tests. Authentication and account-management choices still need a bounded planning task in DECISIONS.md; do not infer their acceptance or implement unrelated features. Case sharing and farm/AI workflows remain later work. The historical prerequisite audit remains dated evidence, not the current installed-tool state.
+Current checkpoint: M0 is complete and UM1 implemented/verified locally. Use DEVELOPMENT.md to run it and create the first administrator interactively; inspect TESTING.md for the real 38 backend/11 frontend/6 browser results and outstanding remote CI. Review the account UI and any remaining account-policy needs as bounded follow-ups. Case sharing and farm/AI workflows remain later work and require their own request. The historical prerequisite audit is dated evidence, not current installed-tool state.

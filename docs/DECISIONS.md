@@ -1,6 +1,6 @@
 # Decision register
 
-Last updated: 16 November 2026. The user accepted tooling decisions D01-D04 and D17 on 15 November and subsequently authorized the project base scaffold. The implementation record below distinguishes installed/verified foundation components from later product features. Other unresolved decisions remain open.
+Last updated: 17 November 2026. M0 is complete. The user selected the warm green direction and explicitly requested the user-management backend/frontend implementation after planning. D19-D23 were chosen within that authorized scope and are now implemented locally; the record distinguishes these implementation selections from unresolved recovery, privacy and deployment decisions. Homepage visual follow-ups below record the approved reference and merged creamy green design foundations.
 
 ## Baseline constraints
 
@@ -33,21 +33,87 @@ Do not infer permission to perform unsafe task mutations from the release label.
 | D02 | React language and build tool? | M0 | Accepted 15 November 2026: React + TypeScript strict mode + Vite, using a stable compatible React TypeScript template. |
 | D03 | Database driver/ORM and migrations? | M0 | Accepted 15 November 2026: synchronous SQLAlchemy 2.1.x + Psycopg 3.3.x binary package + Alembic 1.x; pgvector Python integration when vector columns are introduced. |
 | D04 | Local PostgreSQL/pgvector runtime? | M0 | Accepted 15 November 2026: Docker Desktop WSL 2 backend + Compose v2-compatible CLI; PostgreSQL 18 with pgvector 0.8.x. Run app processes natively in PowerShell initially. See the installed Compose v5 compatibility note below. |
-| D05 | Code license and source repository/remote? | Repository setup/sharing | Not selected |
+| D05 | Code license and source repository/remote? | Repository setup/sharing | GitHub remote configured at Ushan-Srinuka/WagaMaga; code license remains unselected. |
 | D06 | Exact V0 identity, acceptance and execution scope? | Before V0 mutations | Synthetic local records only; apply DR02 when tasks change |
 | D07 | Supported area, evidence coverage and reuse rights? | Before publishing the corpus | Confirm chilli applicability and permissions |
 | D08 | Parser, upload limits, scan mechanism and extraction fallback? | Before ingestion | Bound worker resources; OCR optional and evaluated |
 | D09 | LLM/embedding provider, model, dimensions, privacy and budget? | Before real AI evaluation | Compare using fixed questions; fake providers for ordinary tests |
 | D10 | Routine/referred/blocked categories and qualified reviewer? | Before executable proposals/pilot | Review policy with an agricultural advisor; label simulated review |
-| D11 | Session durations, hash library, recovery, rate limits, CSRF and CORS? | Identity implementation | Security design defined; exact configuration open |
-| D12 | Inaccessible-object 403/404 policy, pagination and provider error status? | First domain API | Use a consistent non-disclosing contract |
+| D11 | Session durations, hash library, recovery, rate limits, CSRF and CORS? | UM1 | D19-D23 are selected for the authorized implementation; recovery/email verification and real-user policy remain open. |
+| D12 | Inaccessible-object policy, pagination and errors? | UM1 / later domains | Identity uses 401/403 before target lookup, then 404, bounded 20/100 pagination and safe 409/422/429/503 outcomes. Future private domain policy remains to be finalized. |
 | D13 | Weather provider, precision, permissions, freshness and thresholds? | Live weather/review rules | Fixtures first; thresholds require domain validation |
 | D14 | Retention, account deletion, reporting contact and provider terms? | Before real user data/external access | No durations/contact invented |
 | D15 | Host, file storage, TLS, backup tooling and monthly budget? | Deployment planning | Preserve separate API/worker and private DB/storage |
-| D16 | UI palette, typography, component library and final navigation? | Before UI implementation | See UI_DESIGN.md; no library selected |
+| D16 | UI palette, typography, components and navigation? | UM1 | Warm green direction selected; the 17 November follow-up extends creamy green/sage surfaces, Plus Jakarta Sans, forest/sprout actions and rounded shared components across all existing screens. Plain CSS/accessible interactions remain. Future domain navigation remains open. |
 | D17 | Testing, linting and formatting tools? | M0, expanded as features arrive | Accepted 15 November 2026: pytest/TestClient/HTTPX, Ruff; TypeScript compiler, ESLint, Prettier, Vitest/React Testing Library; Playwright when browser journeys exist. |
+| D18 | Build user management early? | After M0 | Accepted sequence, then full backend/frontend UM1 implementation explicitly requested on 16 November 2026. This brings identity forward without marking M2 complete. |
+| D19 | Password/JWT libraries and input policy? | UM1 | pwdlib 0.4.2 + Argon2id (argon2-cffi 25.1.0), PyJWT 2.15.1/HS256, email-validator 2.4.0; generated server key and strict DTOs. On 17 November the user selected 8-128 characters plus a letter, number and symbol for new passwords, superseding the initial 15-character minimum. |
+| D20 | Browser session/refresh design? | UM1 | Selected/implemented: 15-minute memory-only access JWT, absolute 7-day families, hashed opaque refresh history, locked rotation/replay revocation and current actor/session checks. Same-origin browser proxy with exact Origin/client-header protections. |
+| D21 | Administrator setup and lifecycle? | UM1 | Selected/implemented: restricted first-admin CLI, farmer-only signup, one role, own display-name editing, audited/versioned admin role/status writes and atomic revocation; self changes blocked and active administrator preserved. Recovery/deletion remain excluded. |
+| D22 | Routing and reusable UI? | UM1 | Selected/implemented: React Router 8.5.1 declarative mode, existing Vite/React stack, plain CSS variables and shared fields/notices/native dialogs. No state manager or UI kit added. Playwright 1.65.1 added under D17. |
+| D23 | Anti-abuse, recovery and data boundary? | UM1 / before real users | Implemented shared PostgreSQL fixed-window limits: 5 account failures/15min, 50 login IP attempts/15min, 5 registrations/IP/hour, 30 refreshes/IP and family/min. Keys are HMAC-derived; expired buckets are removed. Local synthetic use only; recovery, verification and retention remain open. |
 
 The solo developer owns engineering choices. Agricultural policy and evidence applicability require qualified domain input. These dependencies do not mean every routine implementation detail requires a separate approval.
+
+## UM1 implementation choices - 16 November 2026
+
+Homepage-only visual revision, 16 November 2026: the user selected bold/premium styling and real or generated imagery. D16's warm green account UI remains the account-page baseline; the homepage now uses a scoped forest/lime palette, heavy system sans-serif display text and a generated chilli-field image. The built-in image_gen tool was selected within the user's image preference; local PNG/WebP assets and exact prompt/provenance are recorded in frontend/public/images/README.md. This does not select a global UI kit, change the stack or imply the image depicts an actual farm.
+
+Homepage reference refinement, accepted 17 November 2026: the user supplied a visual reference and approved adapting its layout for the homepage only. This supersedes the homepage's oversized uppercase/lime presentation above with sentence-case sans-serif headings, a light header, photo hero, bright green pill buttons, pale lavender surfaces and rounded cards. Add product vision/planned feature previews, a planned three-step workflow, trust principles, account CTA and footer section navigation. Reuse the existing local generated image and plain React/CSS; no additional package, provider or global design-system change. Mark future tools as Planned and sample panels as Illustrative preview. Do not reproduce unsupported privacy promises, agricultural advice, claimed citations or functional farm controls from the reference. Account-page styling, authentication and the agreed stack remain unchanged.
+
+The user's request to create the user-management backend, frontend and related parts authorizes this bounded implementation. The earlier plan is now realized in [USER_MANAGEMENT.md](USER_MANAGEMENT.md), without a separate claim that each numeric default received individual user approval. D19-D23 were selected as documented implementation choices; no farming/AI feature or public deployment was added. D16's warm green direction was expressly selected by the user.
+
+D19 uses [FastAPI's documented pwdlib/PyJWT approach](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/) with Argon2id, explicit HS256 validation and a generated server-only signing key. The existing Python/SQLAlchemy/Psycopg/Alembic stack is retained. Compatible versions are in generated uv.lock; public registration rejects role/status fields. Initially, passwords allowed 15-128 characters without composition requirements; the user-requested revision below supersedes that new-password policy. Spaces/password managers and exact untrimmed password values remain supported. Alternative external providers, legacy password stores and a different session architecture were unnecessary for this local milestone.
+
+D20 retains memory-only access tokens plus rotated HttpOnly refresh cookies, rather than localStorage. Exact issuer/audience/expiry/signature and live account/session state are checked. Refresh races serialize on PostgreSQL user/family locks; reuse revokes the family. Cookies use host-only, auth-path, explicit SameSite=Lax and Secure in production. Exact Origin plus X-WagaMaga-Client protects browser auth POSTs; this follows the principles in [OWASP CSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html). [RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.14) informed rotation/replay handling, without claiming a full OAuth server. A lost refresh response may require login; no automatic rotation retry is attempted. Current-state checks cost a database read but make revocation effective on subsequent requests.
+
+D21 makes role/status, revocation and append-only audit writes atomic and commits before HTTP success. A real deferred PostgreSQL commit-failure test verifies that boundary. Administrator lifecycle changes take a transaction advisory lock, recheck the actor, block self-management and preserve an active administrator. The CLI requires local migration credentials and hidden password entry, and refuses repeated bootstrap once an administrator record exists. No default administrator or public elevation route exists.
+
+D22 follows [React Router declarative routing](https://reactrouter.com/start/declarative/routing) inside Vite and keeps plain CSS, avoiding a new application server or UI/state framework. Shared semantic forms, notices and native dialogs establish the warm green layout. Actual 360px/1280px browser checks cover the connected screens and keyboard focus. Implementation followed the broad build request; a separate user wireframe-approval session is not claimed.
+
+D23 uses shared PostgreSQL counters and expiry cleanup rather than adding Redis. Local Vite shares a proxy IP; the documented API command disables untrusted forwarded-header interpretation. Limits are configurable engineering defaults, not measured attack-resistance guarantees. Email ownership, account recovery, long-term retention, administrator MFA and external hosting remain decisions before real-user access. The original scope had no password/email change, hard deletion, impersonation or email service; password change and scrubbed account removal are added by D24.
+
+Affected guides: USER_MANAGEMENT.md, ROADMAP.md, CODEX_WORKFLOW.md, DEVELOPMENT.md, API.md, DATABASE.md, UI_DESIGN.md, TESTING.md and SECURITY.md. Remote CI for UM1 is configured but not claimed to have run for these local changes.
+
+## Merged homepage design foundations - 17 November 2026
+
+Accepted within the user's request to combine their supplied DESIGN.md with the existing UI guide and use a creamy green background. [UI_DESIGN.md](UI_DESIGN.md) remains the single maintained design guide; merge the supplied editorial typography, forest/sprout accents, rounded shapes and fine borders with existing navigation, accessibility, evidence and farmer-control requirements. Resolve the supplied document's conflicting lavender front matter and warm cream prose in favour of the user's explicit creamy green direction: canvas #f7f8ef, sage sections #edf2e5, warm-white cards #fffef9 and forest #0f2d1f.
+
+Use Plus Jakarta Sans for homepage headings/body, self-hosting the unmodified 27,348-byte Latin variable WOFF2 (weights 400-800) from Google Fonts with its SIL Open Font License and [source/hash record](../frontend/public/fonts/plus-jakarta-sans/README.md). This replaces the homepage system-font/lavender treatment above; account-page typography and colours remain their existing baseline. The alternative of a runtime Google Fonts stylesheet was unnecessary because local delivery avoids a third-party font request. No new npm package or global UI framework is needed. Review glyph coverage before adding languages beyond the current English homepage.
+
+Reference telemetry, predictive diagnostics and gauges remain examples, not implemented or newly authorized features. Retain planned/illustrative labels and the existing generated image. API, authentication, database, worker, deployment and the agreed stack are outside this visual change.
+
+## Shared visual theme expansion - 17 November 2026
+
+Accepted through the user's request to use the same UI design in other parts. Extend the merged editorial/creamy green foundation to login, registration, own account, administrator list/detail, dialogs, shared states and the developer connection screen. This supersedes the earlier homepage-only restriction for visual styling. Register the existing local Jakarta font and palette once in frontend/src/theme.css; homepage/account aliases reference those tokens. Use warm-white cards, soft sage navigation, forest selected links/save/confirmation actions and sprout auth-entry actions. Desktop auth reuses the generated field photo with a dark text overlay; mobile remains form-first. Preserve warning colours and wording for destructive/disabled/error states.
+
+No dependency, application feature, API/schema, authentication policy or deployment is added. Existing server-side permissions and session handling remain authoritative. Update UI_DESIGN.md and USER_MANAGEMENT.md and verify existing account journeys, responsive navigation and native dialog focus. Font binary/license/provenance remain unchanged; only their application scope is extended.
+
+## New-password policy revision - 17 November 2026
+
+Accepted through the user's explicit signup request: reduce the new-password minimum to 8 and require at least one letter, one number and one symbol; retain the 128-character maximum. Interpret letters as Unicode letter categories, numbers as decimal digits and symbols as Unicode punctuation/symbol categories. Whitespace or format/control characters alone do not satisfy the symbol requirement. Do not add an uppercase requirement or trim passwords.
+
+Enforce the same rule in registration's SecretStr validator and the signup UI, including both password length fields and visible guidance. The controlled first-administrator CLI reuses Register, so its prompt follows this policy. Login continues checking existing stored hashes without enforcing the new composition rule; do not invalidate existing passwords or add a reset flow. Update synthetic test passwords and generate compliant browser fixture credentials. Argon2id, session/abuse controls, secret redaction, dependencies and database schema remain unchanged. API.md, SECURITY.md, DEVELOPMENT.md and USER_MANAGEMENT.md document the current contract; TESTING.md records actual verification separately.
+
+## D24: account removal and password changes - 18 November 2026
+
+Status: accepted from the user's explicit request to let administrators remove accounts and let users change their passwords. Scope stays inside UM1 identity; no farm/AI behavior is added.
+
+Administrator removal is permanent from the product UI but uses a privacy-scrubbed tombstone, not a physical SQL row delete. In one transaction, verify administrator/session, reject self-removal and stale version, ensure an active administrator remains, replace email/name/password hash, mark disabled/deleted, revoke all sessions and append an audit event. Keep UUID/FK history intact; hide removed accounts from normal listing and offer an explicit deleted filter showing scrubbed records. The request requires a reason and optimistic version. An append-only audit failure rolls the entire mutation back. Future domain deletion/retention policy remains a separate design and must not cascade away evidence.
+
+Users change their own password only after entering the current password. Reuse the accepted 8-128 letter/number/symbol rule. Rate-limit current-password attempts using the existing shared PostgreSQL limiter. In one transaction, update the Argon2id hash, increment account version, audit the change, revoke every other active session and keep the current session so the user can continue. No administrator password reset or forgotten-password flow is introduced.
+
+Add migration `0003_account_lifecycle` with `users.deleted_at`; no new dependency. Update DEVELOPMENT, API, DATABASE, SECURITY, USER_MANAGEMENT, ROADMAP and TESTING. Verify with actual PostgreSQL/pgvector API tests, frontend tests, six desktop/mobile Playwright journeys, lint/format and build; remote CI remains a separate delivery check.
+
+## D25: audit viewer and in-app notifications - 18 November 2026
+
+Status: authorized by the user's request to implement audit-log viewing and in-app notifications. Keep both within the current account/security scope; no farming workflow or email service is introduced.
+
+Add an administrator-only audit history page and `GET /admin/audit-logs`, with bounded pagination and action/account/date filters. Return action, actor/target UUID and current display name, changed values, reason, request ID and timestamp; never return email, password hashes, tokens or private farm/chat records. Record each audit-feed request in the append-only audit table with a fixed reason that contains no filter or private values. Keep the view distinct from operator/server diagnostics. Audit-log read access already exists for the app role; no new audit mutation privilege is added.
+
+Add a PostgreSQL notifications table and recipient-owned inbox API/page. A user can list all/unread notifications, mark read or unread, and see a shared unread count; all queries and state changes derive recipient identity from the live session, and non-owner ID lookups return 404. Create trusted, fixed-format in-app notifications in the same transaction for active-user role changes, account re-enablement and the user's own password change. Do not create an unread alert for a disabled/removed account it cannot access. No arbitrary user-supplied message, email alert, general system-log screen, or automatic notification from future farm/advisor events is included. Add migration `0004_in_app_notifications` and grant the application role SELECT/INSERT/UPDATE only on the notifications table.
+
+Update API, DATABASE, SECURITY, UI_DESIGN, USER_MANAGEMENT, DEVELOPMENT, ROADMAP and TESTING. Verify real PostgreSQL permission/transaction behavior, frontend tests and desktop/mobile browser flows. Email delivery, notification retention, and farm/advisor event definitions remain future decisions.
 
 ## Accepted Windows tooling package - 15 November 2026
 

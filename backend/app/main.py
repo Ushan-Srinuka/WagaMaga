@@ -1,13 +1,19 @@
-"""Application factory: health and OpenAPI only, without business endpoints."""
+"""Application factory with health and the bounded UM1 account module."""
 
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 from app.db.database import Database
+from app.modules.identity.routes import router as identity_router
+from app.modules.identity.security import COOKIE_NAME, COOKIE_PATH, IdentityError
+from app.modules.notifications.routes import router as notifications_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,7 +28,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="WagaMaga AI API",
         version="0.1.0",
-        description="M0 foundation. No farm, identity, advisory or planning features yet.",
+        description=(
+            "Accounts, administrative audit history, in-app notifications and M0 health. "
+            "Farm, advisory and planning features are not implemented."
+        ),
         docs_url="/docs" if settings.app_env != "production" else None,
         redoc_url="/redoc" if settings.app_env != "production" else None,
         openapi_url="/openapi.json" if settings.app_env != "production" else None,
@@ -32,10 +41,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=False,
-        allow_methods=["GET"],
-        allow_headers=["Content-Type"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "Authorization", "X-WagaMaga-Client"],
     )
     application.state.database = database
+    application.state.settings = settings
+
+    def error_response(request: Request, status: int, code: str, message: str, **extra):
+        return JSONResponse(
+            {
+                "code": code,
+                "message": message,
+                "request_id": getattr(request.state, "request_id", str(uuid4())),
+                "field_errors": [],
+                "retryable": status in {429, 503},
+                **extra,
+            },
+            status_code=status,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @application.middleware("http")
+    async def private_responses(request: Request, call_next):
+        request.state.request_id = str(uuid4())
+        if request.url.path.startswith("/api/v1"):
+            size = request.headers.get("content-length", "0")
+            if not size.isdigit() or int(size) > 16384:
+                return error_response(
+                    request, 413, "REQUEST_TOO_LARGE", "The account request is too large."
+                )
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request.state.request_id
+        if request.url.path.startswith("/api/v1"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @application.exception_handler(IdentityError)
+    async def identity_error(request: Request, error: IdentityError):
+        response = error_response(request, error.status, error.code, error.message)
+        if error.status == 401:
+            response.headers["WWW-Authenticate"] = "Bearer"
+        if error.retry_after is not None:
+            response.headers["Retry-After"] = str(error.retry_after)
+        if error.clear_cookie:
+            response.delete_cookie(COOKIE_NAME, path=COOKIE_PATH)
+        return response
+
+    @application.exception_handler(RequestValidationError)
+    async def invalid_input(request: Request, error: RequestValidationError):
+        # Pydantic's raw input/ctx can contain plaintext passwords. Return field names only.
+        fields = [
+            {
+                "field": ".".join(str(part) for part in item["loc"]),
+                "message": "Check this field's format, length and allowed values.",
+            }
+            for item in error.errors()
+        ]
+        return error_response(
+            request, 422, "VALIDATION_ERROR", "Check the form fields.", field_errors=fields
+        )
+
+    @application.exception_handler(SQLAlchemyError)
+    async def unavailable(request: Request, error: SQLAlchemyError):
+        return error_response(
+            request, 503, "DATABASE_UNAVAILABLE", "Account access is temporarily unavailable."
+        )
+
+    application.include_router(identity_router)
+    application.include_router(notifications_router)
 
     @application.get("/health/live", tags=["Health"])
     def liveness() -> dict[str, str]:

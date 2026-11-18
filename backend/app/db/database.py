@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 
-SCHEMA_REVISION = "0001_foundation"
+SCHEMA_REVISION = "0004_in_app_notifications"
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,7 @@ class Database:
                 pool_pre_ping=True,
                 pool_size=2,
                 max_overflow=2,
+                hide_parameters=True,
                 connect_args={"connect_timeout": 3, "options": "-c statement_timeout=3000"},
             )
 

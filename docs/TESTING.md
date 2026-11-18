@@ -1,6 +1,6 @@
 # Testing strategy
 
-Status: M0 foundation complete, 16 November 2026. Remote CI and fresh Windows checkout verification are recorded below. Business and AI release suites are future work. Tooling is locked, and the commands below exercise real foundation behaviour.
+Status: M0 complete and UM1 account, audit-history, in-app notification and homepage session-navigation work verified locally. On 18 November 2026, account/audit changes passed 62 backend tests, 29 frontend tests and all 6 desktop/mobile browser journeys; migration/drift, lint, format and build checks passed. The subsequent homepage/login-navigation follow-up passed 30 frontend tests, lint, format and production build. Its browser rerun could not start because local port 8000 was already occupied; do not treat the earlier browser result as verification of the new redirect. Expanded CI has not run remotely for these local changes. Farming/AI release suites remain future work.
 
 ## M0 commands
 
@@ -84,7 +84,143 @@ The initial clone exposed a Windows failure: default Git CRLF conversion made Pr
 
 To isolate this verification, the documented configuration command used `--port 55433` and Compose commands used `-p wagamaga-m0-verify`. The normal database project/volume and original credentials were not changed. The temporary API and Vite processes were stopped, and `docker compose -p wagamaga-m0-verify down` removed the verification containers/network while preserving the volume. No deployment or business feature was added. The existing bundled browser tooling ran the foundation smoke check; its script/screenshots and the clone are ignored artifacts.
 
-M0's foundation exit criteria are met. This does not verify production hosting, OS servicing, private-user access, AI quality or any later business milestone. User management is the next requested scope and remains unimplemented.
+At this M0 checkpoint the foundation exit criteria were met and user management was not yet implemented. The subsequent UM1 record below supersedes that identity status. M0 alone did not verify production hosting, OS servicing, private-user access, AI quality or later milestones.
+
+## UM1 local verification record - 16 November 2026
+
+The user requested the backend/frontend implementation after planning. The [UM1 contract](USER_MANAGEMENT.md) is now implemented with actual PostgreSQL-backed verification. Tests use synthetic farmers/advisors/administrators, not real account data or SQLite. The database fixture requires URLs ending in `_test`; integration tests truncate/rebuild only this dedicated test database. Do not point it at data you need to keep. Run backend and browser database suites sequentially, because the backend migration/reset checks rebuild the test schema.
+
+| Check | Actual outcome |
+| --- | --- |
+| Backend | `pytest --require-database`: 38 passed, no skipped integration cases; includes the original foundation checks |
+| Registration/validation | Generic new/duplicate outcomes, Argon2id storage, normalized email uniqueness, concurrent signup, strict DTO/mass-assignment and password redaction checks passed |
+| Identity/session | Wrong/unknown/disabled login failures; tampered/wrong-algorithm/issuer/audience/expired tokens; unknown/revoked/expired sessions; rotation/replay/concurrent refresh and logout checks passed |
+| Permissions/account writes | Own profile only, non-admin/advisor denial before target disclosure, stale versions, role/status revocation, re-enable requiring new login, self-management denial and concurrent administrator preservation passed |
+| Atomicity/audit | Immediate audit-insert failure and a real deferred PostgreSQL commit-trigger failure both returned errors and rolled back account/session/audit writes; app audit UPDATE/DELETE denied |
+| Abuse/browser boundaries | Missing/null/untrusted Origin and wrong client header denied; shared quotas, Retry-After, bucket expiry, registration/refresh caps and production Secure cookie checks passed |
+| Migrations/metadata | Upgrade from M0 and test-database downgrade/rebuild through base to head passed; `alembic check` reported no new operations |
+| Worker | Separate `python -m app.worker --once` reported database ready and exited successfully; no identity jobs invented |
+| Frontend | 11 tests passed: foundation status, auth forms/confirmation/password masking, safe failures/retry, denied admin navigation, 429/empty-state retry, single-flight refresh, uncertain-response handling and memory-only tokens |
+| Build/static | TypeScript production build, ESLint, Prettier and Ruff lint/format passed |
+| Browser | Playwright 1.65.1 with installed headless Edge: all 6 tests passed (3 actual journeys at both 1280px and 360px) |
+| Browser journeys | Farmer registration/login/profile/reload/denied-admin/logout; admin search/filter/detail/confirmed role/disable/re-enable with target-session revocation; concurrent real API edit yielding a stale UI decision and record reload |
+| Accessibility/layout | Dialog Escape/focus restoration, password fields, accessible form navigation, no horizontal page scrolling and real session-cookie attributes checked; local screenshots inspected |
+| Hash sample | Five sequential local Argon2id hash/verify runs: median 69.2ms hash, 69.4ms verify; parameters m=65536 KiB, t=3, p=4. This is a local sample, not a load/performance guarantee |
+| Dependencies | Generated uv/npm locks include the selected libraries; npm installation audit reported zero findings |
+
+The initial browser runs exposed overly broad test locators and a real React StrictMode dialog-focus restoration issue; those were corrected before the final green six-test run. Test traces/video are disabled to avoid recording token traffic; screenshots contain only synthetic account data and remain ignored. Browser server fixtures use fresh generated credentials, a guarded test DB and no default development administrator. They start API/Vite automatically and refuse to reuse existing servers. Stop normal API/Vite on 8000/5173 before running the suite.
+
+From the project root, after normal locked setup and `docker compose up -d --wait`:
+
+```powershell
+.\scripts\uv.ps1 run ruff check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run alembic upgrade head
+.\scripts\uv.ps1 run alembic check
+.\scripts\uv.ps1 run pytest --require-database
+.\scripts\uv.ps1 run python -m app.worker --once
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
+```
+
+For the default Chromium browser, install its matching Playwright binary once and then run the suite:
+
+```powershell
+Push-Location frontend
+npm.cmd exec -- playwright install chromium
+npm.cmd run test:e2e
+Pop-Location
+```
+
+The local run used the already installed Edge instead of downloading Chromium:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = 'msedge'
+npm.cmd --prefix frontend run test:e2e
+Remove-Item Env:PLAYWRIGHT_CHANNEL
+```
+
+Linux CI installs Chromium with `npx playwright install --with-deps chromium` and runs the same suite after backend/frontend jobs pass. That expanded remote workflow is configured, not executed for the current uncommitted UM1 changes. Real-user recovery/verification/privacy, deployed ingress, production security review, general farm/case authorization and full AT02 remain unverified. Browser tests and component doubles are distinguished above; no live-provider evaluation was performed.
+
+## Public homepage follow-up - 16 November 2026
+
+The user requested a homepage as the opening screen. `/` now renders a public React page outside the session provider, with no API request, and login/register/account header wordmarks link home. The new regression check renders the actual App route with an unavailable API, verifies the opening content and working account links, and checks that future features are labelled as roadmap items.
+
+Frontend suite: 12 tests passed; ESLint, Prettier and strict TypeScript/production build passed. A separate local headless Edge check at 1280px and 360px blocked account API traffic and verified that home still rendered, login/register/home navigation worked, there were no page errors and there was no horizontal scrolling. Screenshots were visually inspected and remain ignored under `.tools/screenshots/home-*.png`; the smoke script is an ignored local QA helper, not an additional committed CI suite.
+
+The regular frontend check commands above exercise the regression test. Backend code and account rules did not change, so backend tests and the six database-backed account browser journeys were not rerun for this frontend-only task. Their earlier results remain recorded separately. No dependencies, agricultural features, deployment or remote CI result were introduced by this follow-up.
+
+## Homepage style revision - 16 November 2026
+
+The user selected homepage first, bold/premium styling and real or generated imagery. The homepage now uses a locally generated photographic chilli-field hero, scoped forest/lime colours and heavy display typography. The built-in image_gen tool produced the original PNG; the served WebP is 1672 × 941 and 313,452 bytes. The [asset record](../frontend/public/images/README.md) contains the exact prompt and provenance. Alt text/footer disclose the generated nature, and future capabilities remain labelled as roadmap items.
+
+Checks run: all 12 frontend tests passed, plus ESLint, Prettier and strict TypeScript/production build. Local headless Edge verified image loading, public home without API calls, login/register/home links and absence of horizontal scrolling or page errors; screenshots were inspected. The final header overlay improves text separation from the bright sky. Screenshot/script artifacts remain ignored under .tools. Backend/authentication behaviour and account styles are outside this visual task; no new dependencies, live-provider evaluation, deployment or remote CI result is claimed.
+
+## Reference-led homepage refinement - 17 November 2026
+
+The user approved adapting their supplied homepage screenshot. This homepage-only change adds a light header, photo hero, three planned feature previews, planned three-step workflow, trust/control principles, account CTA and grouped footer. It reuses the existing generated WebP without adding dependencies. Each feature has a Planned badge and an Illustrative preview label; the panels do not supply real agronomic advice or functional farm controls.
+
+Commands run from frontend/: `npm.cmd run test` (12 tests in 6 files passed), `npm.cmd run lint`, `npm.cmd run format:check` and `npm.cmd run build` (strict TypeScript and Vite build) all passed. The homepage regression check verifies public rendering with an unavailable API, account-entry links, three planned/illustrative labels and valid section-anchor targets.
+
+Local headless Edge smoke checks passed at 1280, 768, 360 and 320 pixels: HTTP 200, hero image loaded, no homepage API requests, keyboard skip link, all three header section anchors landing at their targets, login/register/home navigation, no horizontal scrolling and no JavaScript page errors. Desktop full-page and mobile hero screenshots were visually inspected. The local command `node .tools/reference-home-smoke.cjs` requires the frontend dev server at port 5173 and installed Edge; this ignored QA helper/screenshots are local evidence, not a committed CI suite. Normal frontend check commands above remain the repeatable repository checks.
+
+Account styles, API, database and worker code were not changed in this task. Backend and full account E2E suites were not rerun for this homepage-only refinement. No remote CI, deployment, live provider evaluation or real-user usability validation is claimed.
+
+## Merged design guide and creamy green homepage - 17 November 2026
+
+The supplied Agro-Intelligence Editorial DESIGN.md was merged into UI_DESIGN.md, preserving the existing navigation, interaction, accessibility and product-safety requirements. The user requested a creamy green background, which replaces the reference's conflicting lavender surface tokens. The homepage now uses cream #f7f8ef, sage #edf2e5, warm-white cards, forest/sprout accents, finer borders and 24px card corners. It retains the existing section structure, image, working account links and planned/illustrative labels. Account styles and backend code were not changed.
+
+Plus Jakarta Sans is bundled as an unmodified 27,348-byte Latin variable WOFF2, weights 400-800, with its full SIL Open Font License and [source/hash record](../frontend/public/fonts/plus-jakarta-sans/README.md). No font service request or new npm dependency is required at runtime.
+
+From frontend/, `npm.cmd run test` passed all 12 tests in 6 files; `npm.cmd run lint`, `npm.cmd run format:check` and `npm.cmd run build` passed. Local headless Edge checks passed at 1280, 768, 360 and 320 pixels. Chromium platform-font inspection confirmed the custom Jakarta font supplied heading glyphs; checks also confirmed the cream/sage computed colours, loaded hero image, no homepage API/external requests, planned/illustrative labels, keyboard skip, section-anchor landing, login/register/home links, no horizontal overflow and no JavaScript page errors. Desktop full-page and mobile hero screenshots were visually inspected.
+
+Sampled solid-background text pairs (body, card copy, accent action, planned badge and step numbers) meet at least 4.5:1 contrast. The initial step-number sample measured 4.18:1; its text was darkened before the passing final browser run. This sampling is not a full accessibility audit or a measured contrast guarantee across the photographic hero. The local QA helper `node .tools/creamy-home-smoke.cjs` requires the frontend dev server on port 5173 and installed Edge; helper/screenshots remain ignored local evidence rather than a committed CI suite.
+
+No backend/full account E2E rerun, remote CI, deployment, AI evaluation or real-user usability study is claimed for this visual/documentation task.
+
+## Shared creamy green theme across existing screens - 17 November 2026
+
+The user extended the merged homepage visual style to the other existing parts. A single font-face/palette now lives in frontend/src/theme.css, consumed by homepage/account aliases. Updated screens are login/registration, account, administrator list/detail, native confirmation dialogs, shared states and /connection. Plus Jakarta Sans, creamy green/sage surfaces, rounded warm-white cards, pill navigation/actions, forest selected/save/confirm actions and sprout auth actions replace the former account serif/system theme. Desktop auth reuses the generated field photo; mobile remains form-first. No backend, API/session/permission logic, database or dependency change was made.
+
+Verification completed:
+
+- From frontend/: `npm.cmd run test` passed 12 tests in 6 files; `npm.cmd run lint`, `npm.cmd run format:check` and `npm.cmd run build` passed.
+- Docker Desktop and the existing PostgreSQL container were started for the dedicated test databases. With normal API/Vite ports free, `$env:PLAYWRIGHT_CHANNEL='msedge'` then `npm.cmd --prefix frontend run test:e2e` passed all 6 existing real PostgreSQL-backed browser journeys (3 journeys at 1280px and 360px); remove the environment variable afterwards. Journeys cover registration/login/profile/reload/logout/denied admin access, administrator search/filter/role/disable/re-enable, session revocation, stale-edit recovery and dialog Escape/focus restoration. Only synthetic test accounts were used. Harmless NO_COLOR/FORCE_COLOR warnings appeared; no test failure remained.
+- Additional local visual/state checks at 1280, 768, 360 and 320 pixels covered login, registration, account/mobile menu, administrator list/detail, dialog, access-denied, offline and connection views. Browser platform-font inspection confirmed local Jakarta glyph rendering; checks confirmed cream canvas, no external requests, no horizontal page scrolling, no overlapping role/status badges, password visibility toggles and dialog Escape/focus restoration. These use synthetic HTTP doubles for screenshots/state coverage and are **not** server authorization evidence; the six real journeys above supply separate integration evidence. Local helper: `node .tools/shared-theme-smoke.cjs` with the frontend dev server on port 5173 and installed Edge. Screenshots/helpers are ignored local artifacts, not another committed CI suite.
+- `node .tools/creamy-home-smoke.cjs` passed again at all four widths after the shared-token/font move, including homepage API independence, actual local font rendering, sampled contrast, image loading, section anchors and account links.
+
+Desktop registration/account and additional desktop login/mobile account/admin/dialog screenshots were visually inspected. Existing native dialog behaviour and server permission boundaries are preserved. Backend suites were not rerun for this visual-only task. No remote CI run, deployment, full accessibility audit or real-user usability study is claimed.
+
+## Signup password policy - 17 November 2026
+
+The user requested an 8-character minimum with at least one letter, number and symbol. Signup and the server Register DTO now require 8-128 characters, including a Unicode letter, decimal digit and punctuation/symbol character. Uppercase is optional; spaces are preserved but do not count as a symbol. The first-administrator CLI reuses Register and its prompt is updated. Login retains its prior input bounds and accepts existing stored passwords without the new composition check. Hashing/session controls and database schema are unchanged. Synthetic registration fixtures now satisfy the policy; browser fixture credentials guarantee a letter/number/symbol in addition to generated entropy.
+
+Checks completed using the documented commands:
+
+- `uv run ruff check` and Ruff format check passed through scripts/uv.ps1; `scripts/uv.ps1 run pytest --require-database` passed **54 tests** using the dedicated PostgreSQL/pgvector test database. New cases reject too-short/long passwords, each missing class, whitespace/format characters masquerading as symbols and verify safe 422/no user creation. Accepted cases cover exactly 8 characters, lowercase-only letters, Unicode letters/digits/symbols, the 128-character maximum and preservation of leading/trailing spaces. Existing passwords without the new composition still log in. Existing permission/session/audit/concurrency/migration tests remain green.
+- From frontend/, `npm.cmd run test` passed **25 tests**; ESLint, Prettier and TypeScript/Vite production build passed. Form tests cover matching 8-character signup, each missing class/length failure before an API call, supported Unicode and untrimmed values, confirmation mismatch/password masking and existing-password login forwarding.
+- After the backend suite completed (the suites share a disposable test DB), `$env:PLAYWRIGHT_CHANNEL='msedge'` plus `npm.cmd --prefix frontend run test:e2e` passed **all 6** real browser journeys at 1280px/360px; the environment variable was then removed. The registration journey now rejects each missing class locally without sending registration requests, then creates an account using a generated compliant password of exactly 8 characters and logs in successfully. Existing profile/admin/session/stale-edit/dialog journeys still pass. No default development account was added.
+
+No remote CI, deployment, live provider evaluation or password-strength measurement is claimed. Ordinary signup/API validation remains independent of external providers.
+
+## Account removal and password change - 18 November 2026
+
+The user requested administrator account removal and a password-change option for users. Migration `0003_account_lifecycle` adds `users.deleted_at`. Admin DELETE checks actor/session, self-removal, expected version and active-admin safety; atomically scrubs the login email/name/password hash, disables and marks the account, revokes sessions and appends audit. Tombstones are hidden from ordinary lists and can be reviewed through `status=deleted`; audit/FK history stays intact. This is permanent removal of login identity in the UI, not physical deletion of the row or a declared retention policy for future farm/chat data. Own-password change requires the current password, reuses the 8-128 letter/number/symbol rule and shared login rate limits, advances the account version, retains the current session, revokes other sessions and audits without recording secrets.
+
+- `.\scripts\uv.ps1 run pytest --require-database` passed **60 tests** against real local PostgreSQL 18/pgvector, including migration rebuild, non-admin/self-removal/stale-version denial, scrubbed listing/login denial/session revocation, concurrent admin removal preserving one admin, audit-failure rollback, wrong-current-password/policy checks, other-session revocation and successful new-password login.
+- Frontend `npm.cmd test` passed **27 tests**. ESLint, Prettier check and TypeScript/Vite production build passed. Form coverage verifies password policy rejection before API submission and the current/new password request; user-list UI exposes the deleted filter.
+- Playwright `$env:PLAYWRIGHT_CHANNEL='msedge'; npm.cmd run test:e2e` passed **all 6 desktop/mobile journeys**. Existing farmer profile journey now changes the password, reloads and signs in with the replacement. The administrator journey disables/re-enables, removes a synthetic account, verifies the deleted filter count and confirms the removed user cannot sign back in. Browser uses the separate guarded `_test` database.
+- The Compose database service was started because it was stopped before verification, then stopped afterward with its named volume preserved. No volume deletion/reset or development-database migration was performed in the test suite.
+
+Remote CI for these uncommitted changes, deployed behavior, real-user retention policy and account recovery remain unverified/out of scope. The database-removal behavior retains tombstones pending a broader retention decision; future farm/chat records must define their own privacy and retention handling before collection.
+
+## Consistent brand mark - 17 November 2026
+
+The user reported different logos on home and signup/account screens. The existing homepage leaf/sage-tile wordmark now comes from one Brand.tsx component and brand.css stylesheet, reused by the homepage header/footer, login/registration, account/admin headers and /connection. The previous W badges, duplicate styles and mobile rules hiding/resizing the logo were removed. Home navigation remains intact.
+
+From frontend/, all 25 component tests passed, plus ESLint, Prettier and TypeScript/Vite production build. Local headless Edge checked /, /login, /register, /account, /admin/users and /connection at 1280, 768, 360 and 320 pixels. It compared the SVG path, icon/tile colour, dimensions, radius, wordmark/AI typography and visibility across routes/footer; all matched. Page-fit, login-to-home navigation and absence of JavaScript page errors passed. A 320px login screenshot was visually inspected. These focused UI checks use synthetic HTTP doubles, not authentication evidence; the earlier six real account journeys were not rerun for this logo-only change. The ignored local helper is `node .tools/brand-smoke.cjs`, requiring the frontend dev server at 5173 and installed Edge. No backend change, remote CI run or deployment is claimed.
 
 ## Selected tools and evaluation methods
 

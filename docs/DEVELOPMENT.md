@@ -1,8 +1,8 @@
 # Development guide
 
-Status: M0 foundation complete on 16 November 2026. React, FastAPI health routes, a separate worker entry point, Alembic and PostgreSQL/pgvector configuration are present. Fresh-checkout startup and remote CI are verified in TESTING.md. Business features remain unimplemented.
+Status: M0 complete and UM1 account, audit-history and notification screens/APIs implemented locally through 18 November 2026. React account/admin screens, FastAPI identity routes, revocable sessions, migrations through `0004_in_app_notifications` and tests are present. Farming/AI features remain unimplemented. M0 remote CI evidence is historical; expanded UM1 CI is configured, with actual local outcomes in TESTING.md.
 
-## M0 local setup
+## Local setup: foundation and user management
 
 From the project root, using PowerShell:
 
@@ -14,7 +14,7 @@ docker compose up -d --wait
 .\scripts\uv.ps1 run alembic upgrade head
 ```
 
-The configuration generator is standard-library-only and also works with the existing Python 3.13 installation. The commands above use the uv-managed interpreter so an extra system Python is not required once uv is available. It creates ignored `.env` credentials once, never prints them and never overwrites an existing file. PostgreSQL is published on `127.0.0.1:55432`; port 5432 was unavailable on this machine. The database container listens on its normal internal port 5432. Relative document storage paths resolve from the repository root in both API and worker.
+The configuration generator is standard-library-only and also works with the existing Python 3.13 installation. The commands above use the uv-managed interpreter so an extra system Python is not required once uv is available. It creates ignored `.env` credentials once and never prints them. For an existing file it preserves settings and passwords, appending a generated `AUTH_SIGNING_KEY` only if that setting is absent. PostgreSQL is published on `127.0.0.1:55432`; port 5432 was unavailable on this machine. The database container listens on its normal internal port 5432. Relative document storage paths resolve from the repository root in both API and worker.
 
 The PowerShell uv wrapper uses a global uv executable if available, otherwise the ignored `.tools/uv/bin/uv.exe` copy used during scaffolding. It runs in `backend/`, stores downloaded Python/cache files under `.tools/`, and uses backend/.python-version. New checkouts need uv installed first; the ignored tools are not part of Git. The scaffold was verified with uv 0.13.8, CPython 3.14.10, Node 24.13.0 and npm 11.6.2. Existing Python installations were not removed and Windows was not updated. Git attributes enforce LF text files on every platform, except PowerShell scripts use CRLF; this keeps fresh Windows checkouts compatible with Prettier's LF formatting.
 
@@ -30,7 +30,7 @@ python -m pip install --target .tools/uv --cache-dir .tools/pip-cache uv==0.13.8
 Run each block in a separate terminal from the project root:
 
 ```powershell
-.\scripts\uv.ps1 run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+.\scripts\uv.ps1 run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log
 ```
 
 ```powershell
@@ -41,9 +41,25 @@ npm.cmd --prefix frontend run dev
 .\scripts\uv.ps1 run python -m app.worker
 ```
 
-Frontend: `http://127.0.0.1:5173`. Swagger: `http://127.0.0.1:8000/docs`. Liveness: `/health/live`; readiness: `/health/ready`. The Vite server forwards health, docs and future API requests to localhost:8000. Production hosting must configure its own reverse proxy; Vite's development proxy is not included in the static build.
+Frontend: `http://127.0.0.1:5173`. Swagger: `http://127.0.0.1:8000/docs`. Liveness: `/health/live`; readiness: `/health/ready`; foundation screen: frontend `/connection`. Vite proxies `/api/v1`, health and docs to localhost:8000. Use the same browser hostname throughout login/refresh/logout. The API reads the socket peer for abuse limits; `--no-proxy-headers` prevents arbitrary forwarding headers from changing that identity. Through local Vite the API sees the local proxy IP, so the IP quota is shared. Production ingress/client-IP handling and its reverse proxy require a separate reviewed setup; Vite's proxy is not included in the static build.
 
-Liveness works without a database or provider keys. Readiness requires PostgreSQL, the vector extension and the current Alembic revision. The worker emits a bounded heartbeat and supports `--once` for verification; it does not claim durable job processing yet.
+### First administrator and account use
+
+After the generator and migration, run this interactively in your own terminal:
+
+```powershell
+.\scripts\uv.ps1 run python -m app.modules.identity.cli
+```
+
+Enter a display name, synthetic email and an 8-128 character password twice, including at least one letter, one number and one symbol. Uppercase is optional; spaces do not count as a symbol. Password entry is hidden and no secret appears in command arguments. This restricted local command reuses the registration validator, uses migration credentials, records an audit event and serializes bootstrap. It refuses once any administrator record exists; there is no public bootstrap route, default admin password or automatic startup seed.
+
+The public homepage opens at `/` and links to farmer registration at `/register` or sign-in at `/login`. Edit your display name and change your password at `/account`; password changes require the current password and sign out other sessions. Administrators also get `/admin/users` and user details, including a confirmed account-removal action. Removal scrubs the name, email and credential, revokes sessions and preserves an audit-linked tombstone; it cannot be undone in the UI. It blocks self-removal and preserves an active administrator. Role changes, disablement and removal revoke target sessions; re-enabling never restores old sessions. Advisors are assigned by an administrator after farmer registration. Create a second administrator through authorized role assignment if another operator is required.
+
+UM1 provides self-service password changes and administrator account removal with identity scrubbing. It does not provide email changes, forgotten-password recovery, verified email ownership, hard row deletion or administrator password reset. Do not repurpose bootstrap as a recovery bypass or edit roles through public request payloads. A real-user invitation needs resolved recovery, privacy, retention and deployment policies first. Current use is local/synthetic.
+
+`AUTH_SIGNING_KEY` is server-only and must be at least 32 bytes; the generator uses 32 random bytes encoded as hex. Changing it invalidates signed access tokens. The current issuer/audience are `wagamaga-api`/`wagamaga-web`, access lifetime is 15 minutes and session expiry is an absolute 7 days. `AUTH_ALLOWED_ORIGINS` defaults to the explicit localhost frontend and Swagger origins shown in .env.example; auth POSTs require this Origin plus `X-WagaMaga-Client: web`. Missing keys leave health available but identity requests return 503. Never put these settings into Vite/browser environment variables.
+
+Liveness works without a database or provider keys. Readiness requires PostgreSQL, the vector extension and the current Alembic revision. The worker emits a bounded heartbeat and supports `--once` for verification; it does not claim durable job processing yet. The API command disables default access logs so account-search query strings are not written there; application responses retain a generated X-Request-ID for correlation.
 
 ### Migrations, database roles and shutdown
 
@@ -55,7 +71,7 @@ Liveness works without a database or provider keys. Readiness requires PostgreSQ
 docker compose stop
 ```
 
-API/worker use the restricted `wagamaga_app` role; Alembic uses separate bootstrap credentials. M0 grants the app read-only access to migration metadata and no schema-write privileges. Future domain migrations must explicitly grant needed table access; audit-table grants must remain append-only.
+API/worker use the restricted `wagamaga_app` role; Alembic uses separate bootstrap credentials. Revisions `0002_identity`, `0003_account_lifecycle` and `0004_in_app_notifications` add users, refresh-session families, token history, expiring limit buckets, audit logs, account-removal timestamp and recipient notifications. The app can operate on identity state and read migration metadata but cannot create schema or update/delete audit rows. It can SELECT/INSERT/UPDATE notifications but has no DELETE grant. Future domain migrations must explicitly grant needed access; audit grants remain append-only. Identity request transactions commit before a success response is sent.
 
 Docker initialization creates separate `wagamaga` and `wagamaga_test` databases on a new named volume. Integration tests refuse names without the `_test` suffix. Editing `.env` passwords after initialization does not rotate existing database roles. Preserve the volume and do not use volume deletion as a routine fix. The `postgres_data` volume is mounted at `/var/lib/postgresql`, matching the PostgreSQL 18 image layout.
 
@@ -106,7 +122,7 @@ WagaMaga/
   .github/workflows/
 ```
 
-This describes the scaffold layout. Domain directories contain package markers only; there are no business routes, services or tables yet. Keep routes thin, business transitions in services and providers behind adapters. The separate worker runs backend code and will reuse domain services; it is not an independent AI microservice.
+Identity now contains models, schemas, routes, services, dependencies, crypto adapters and a restricted CLI. Other domain directories contain package markers only. React app/ owns routing/session/layout, features/ owns auth/account/users, components/ owns shared fields/notices/dialogs, and lib/ owns HTTP/session requests. Keep routes thin, transitions in services and providers behind adapters. The separate worker remains a foundation process and will reuse domain services later.
 
 ## Accepted tooling for M0
 
@@ -208,9 +224,9 @@ This historical audit performed no installations or service startup. The later s
 
 No business CRUD, authentication screens, RAG or live provider calls belong in the M0 scaffold.
 
-## Proposed configuration names
+## Implemented and future configuration names
 
-Names below are a configuration design proposal. The implemented settings schema and environment examples must agree.
+APP_ENV, database/storage/CORS and AUTH settings are implemented and reflected in Settings/.env.example. Model/weather variables remain future designs and are not needed for user management.
 
 | Variable | Purpose |
 | --- | --- |
@@ -219,7 +235,9 @@ Names below are a configuration design proposal. The implemented settings schema
 | `TEST_DATABASE_URL` | Dedicated disposable test database |
 | `CORS_ALLOWED_ORIGINS` | Explicit permitted frontend origins |
 | `DOCUMENT_STORAGE_PATH` | Private local source-file directory |
-| `AUTH_SIGNING_KEY`, `AUTH_ISSUER`, `AUTH_AUDIENCE` | Auth configuration, introduced with identity work |
+| `AUTH_SIGNING_KEY`, `AUTH_ISSUER`, `AUTH_AUDIENCE` | Implemented server-only signing and token validation configuration |
+| `AUTH_ALLOWED_ORIGINS`, `AUTH_ACCESS_MINUTES`, `AUTH_SESSION_DAYS` | Explicit browser origins, access lifetime and absolute session expiry |
+| `AUTH_LOGIN_FAILURES`, `AUTH_LOGIN_IP_ATTEMPTS`, `AUTH_REGISTRATION_ATTEMPTS`, `AUTH_REFRESH_ATTEMPTS` | Shared fixed-window account/IP/family abuse limits; defaults in D23 |
 | `MODEL_PROVIDER`, `MODEL_NAME`, `EMBEDDING_MODEL` | Versioned AI configuration, introduced with advisory work |
 | `MODEL_API_KEY` | Server-only credential if required by the chosen provider |
 | `WEATHER_PROVIDER`, `WEATHER_API_KEY` | Weather configuration, introduced when required |
@@ -228,17 +246,19 @@ Do not put credentials in frontend variables. Do not require model/weather keys 
 
 ## Command registry
 
-The implemented M0 commands are listed below. Add exact, tested commands for later capabilities when their milestone introduces them.
+The implemented foundation/UM1 commands are listed below. Add exact, tested commands for later capabilities when their milestone introduces them.
 
 | Action | Status |
 | --- | --- |
 | Install backend/frontend dependencies | `.\scripts\uv.ps1 sync --locked`; `npm.cmd --prefix frontend ci` |
 | Start/stop local PostgreSQL | `docker compose up -d --wait`; `docker compose stop` |
 | Apply migrations | `.\scripts\uv.ps1 run alembic upgrade head` |
-| Start API, frontend and worker | Separate-terminal commands in M0 local setup above |
+| Start API, frontend and worker | Separate-terminal commands in local setup above |
+| Initial administrator | `.\scripts\uv.ps1 run python -m app.modules.identity.cli` in an interactive terminal; hidden password prompts |
 | Run lint, tests, frontend checks/build | Exact commands and results in TESTING.md |
 | Load/reset synthetic business fixtures | V0: pending schema; isolated local/test only |
-| Run AI evaluation and browser journeys | V0/V1: pending harnesses |
+| Run account browser journeys | `npm.cmd --prefix frontend run test:e2e`; matching Chromium or installed Edge setup in TESTING.md |
+| Run AI evaluation | V0/V1: pending harnesses |
 
 On Windows, document PowerShell-compatible commands and quote paths containing spaces. Bind development services to local interfaces by default. Do not hide required setup steps behind unrecorded manual actions.
 

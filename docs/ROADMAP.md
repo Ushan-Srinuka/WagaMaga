@@ -2,9 +2,27 @@
 
 Status: M0 complete, 16 November 2026. Remote foundation CI passed for published commit 62c6c62. A fresh Windows clone installed the locked dependencies and passed foundation checks and actual startup after correcting the Git line-ending policy. TESTING.md records the evidence and limits. V0 and later releases remain pending.
 
-Local checkpoint: 12 backend tests and 2 frontend tests pass in the fresh clone; lint/format/build checks, actual PostgreSQL/pgvector readiness, migration/application-role checks, separate worker startup and responsive browser smoke checks pass. No business feature has been added. M0 completion does not establish production readiness or a supported Windows servicing state.
+The original M0 checkpoint passed its clean-checkout and CI gates. The subsequent UM1 checkpoint now adds implemented identity/account behaviour, 38 passing backend tests, 11 frontend tests and 6 real-browser desktop/mobile journeys. Lint/format/build checks and local PostgreSQL/migration checks pass. Expanded UM1 CI is configured but not remotely executed for these local changes. Neither checkpoint establishes production readiness or a supported Windows servicing state.
 
-Next requested scope: user management only, brought forward from M2. Plan its authentication/session and account-management decisions and acceptance checks before implementation. Farms, cultivation, knowledge, AI, proposals and weather are outside that next task; advisor case sharing remains with the later case workflow. Completing identity early will not complete M2. The V0/V1 sections below remain the subsequent product roadmap.
+UM1 user management was explicitly requested and is implemented locally, brought forward from M2. Its [milestone guide](USER_MANAGEMENT.md) defines the account scope, selected policies, structure and connected warm green screens. Complete review/publication and the expanded remote CI run before claiming all delivery gates; do not mark M2 complete. The V0/V1 sections below remain the subsequent product roadmap, not newly authorized work.
+
+Authorized UI follow-up: a public homepage now opens at `/` with account entry links and clearly labelled roadmap content. It works without an API/session dependency. The frontend suite now has 12 passing tests and local desktop/mobile homepage smoke checks passed; TESTING.md separates these from the earlier UM1 evidence. No farming/AI capability was added with this page.
+
+Homepage style revision: after the initial bold/premium version, the user approved a supplied reference on 17 November 2026. The page now pairs the existing generated photographic hero with a light header, softer backgrounds, rounded planned-feature cards, a three-step planned workflow and trust principles. Feature previews are explicitly illustrative. Asset provenance is retained locally. Account pages and the milestone sequence are outside this visual revision.
+
+Further homepage refinement, 17 November 2026: the supplied DESIGN.md is merged into UI_DESIGN.md. The current homepage uses locally hosted Plus Jakarta Sans, creamy green/sage surfaces, forest/sprout actions, fine borders and larger card corners. This supersedes its previous lavender/system-font treatment without adding farming features or redesigning account pages. Font provenance/license are bundled; TESTING.md records checks separately.
+
+Shared design follow-up, 17 November 2026: the user extended the same UI style to all existing parts. Login/registration, own account, administrator list/detail, dialogs, shared states and /connection now use one local font/palette in frontend/src/theme.css, with creamy green/sage surfaces and rounded controls/cards. Desktop auth reuses the generated field photo; mobile remains form-first. The previous homepage-only scope above is historical. No new domain feature or API/database change is introduced; TESTING.md records the current frontend and real account browser checks separately from visual doubles.
+
+Password-policy follow-up, 17 November 2026: at the user's request, new passwords now use 8-128 characters with a letter, number and symbol. Signup UI/API and controlled admin bootstrap align; existing-password login remains compatible. Current local verification passed 54 backend, 25 frontend and 6 real desktop/mobile account browser tests. No new milestone, schema migration, dependency or reset/recovery flow was added. TESTING.md records the new cases and limitations.
+
+Account-access follow-up, 18 November 2026: added current-password-confirmed self-service password change and confirmed administrator account removal. Removal scrubs email/name/password hash, revokes sessions and retains an auditable tombstone; list filtering, migration `0003_account_lifecycle`, API/UI guides and failure-path tests were added. Password changes retain the current session and revoke other sessions. Local PostgreSQL verification passed 60 tests, frontend tests passed 27, and all 6 real desktop/mobile account browser journeys passed; Ruff, ESLint, schema-drift check and production build passed. Remote CI remains pending, and this does not resolve real-user recovery or future farm/chat retention policy. See TESTING.md.
+
+Audit and notification follow-up, 18 November 2026: added a filtered, paginated administrator audit-history screen/API that records each feed view, plus recipient-owned in-app notifications with unread count/read state and account-security event templates. Migration `0004_in_app_notifications` stores notices and restricts app-role grants; no email delivery or general system diagnostics view is included. PostgreSQL tests passed 62, frontend tests 29, all 6 desktop/mobile journeys reported passed, and lint/format/build/migration drift checks passed. Notification and audit retention/event policies remain unresolved; expanded remote CI has not run. See TESTING.md and D25.
+
+Homepage account-status follow-up, 18 November 2026: the opening page now restores the live session and shows signed-in/signed-out state, account links and a recipient unread-notification badge. If the API cannot confirm session status, the page says so and offers retry. The main call to action and footer links follow the current account state. Frontend tests now cover both signed-out and signed-in homepage navigation; latest check passed 30 frontend tests, lint, formatting and production build. No backend/API behavior changed.
+
+Login destination follow-up, 18 November 2026: successful sign-in and visits to the login page with an already active session now return to `/` instead of opening the account page. The landing page confirms the session and links to My account and Notifications. Auth component coverage, all 30 frontend tests, lint, formatting and production build passed. Browser rerun was blocked by an already occupied local port 8000; the previous browser result does not verify this redirect.
 
 ## M0: reproducible foundation - first build milestone
 
@@ -20,12 +38,26 @@ Exit criteria:
 - Exact commands and required versions are documented; no secrets are committed.
 - No farm, auth, chat, proposal or weather business features have been implemented in this milestone.
 
+## UM1: early user management - implemented locally
+
+Purpose: understand and exercise the application structure and refine a reusable UI before farming/AI features. Preserve M1-M4 identifiers and the SRS requirement IDs.
+
+Implemented scope: farmer registration, login/logout, revocable sessions, own display-name editing, administrator list/detail and audited role/status actions. Current use is local/synthetic. Farmers/advisors do not gain administrator permissions; account administration adds no private farm/chat access. See [USER_MANAGEMENT.md](USER_MANAGEMENT.md) for current contracts and [DECISIONS.md](DECISIONS.md), D18-D23, for selected implementation choices.
+
+Order: UM1-A decisions and visual review; UM1-B persistence/controlled initial administrator; UM1-C backend authentication/permissions; UM1-D connected React screens; UM1-E browser/CI verification and guides. Every implementation slice includes relevant tests.
+
+Implementation checkpoint: UM1-B/C/D and local UM1-E checks are complete. Choices/styles are recorded for UM1-A; local screenshots were inspected, without claiming a separate user wireframe approval or farmer usability study. Expanded remote CI remains pending until these changes are committed/pushed. No default development administrator was created; use the restricted interactive setup documented in DEVELOPMENT.md.
+
+Exit criteria: included account journeys work; server-side rules, token/session invalidation, last-administrator protection and atomic audit/revocation writes are verified; real PostgreSQL tests and mobile/desktop browser journeys pass; setup/contracts are documented and CI remains green. AT02's farm ownership and advisor case portions remain deferred.
+
+Farms, cultivation, knowledge, AI, proposals, weather and case sharing stay outside UM1. Recovery/email verification, retention and real-user deployment requirements must be resolved before inviting real users; a synthetic local user-management demo does not complete those gates.
+
 ## M1: V0 evidence proof
 
 Suggested slices, each independently reviewed and tested:
 
 1. Prepare synthetic farm/cultivation context, fixture metadata and a small source inventory. Confirm source reuse/applicability before indexing it as eligible evidence.
-2. Establish the necessary local identity/context boundary and minimal record persistence. This may use explicitly labelled synthetic actors; it is not a public-auth implementation.
+2. Establish the necessary local identity/context boundary and minimal record persistence. Reuse UM1 identity if completed; do not create a bypass authentication path. Use explicitly labelled synthetic actors; a local proof is not permission for public personal data.
 3. Process curated document versions with provenance and review eligibility. Durable processing is needed when work must survive restart; do not represent in-process tasks as durable jobs.
 4. Deliver a cited answer and source viewer; test missing evidence, unsupported claims and source-instruction injection.
 5. Persist one bounded proposal, show current/proposed differences and bind acceptance to its exact version/hash.
@@ -38,7 +70,7 @@ Exit criteria: local synthetic records; curated documents; cited answers; at lea
 
 Complete all FR01-FR36 and DR requirements, with NFR baseline verification. Suggested order:
 
-1. Full registration/session handling, roles, object authorization and case sharing.
+1. Reuse and verify completed UM1 registration/session/role handling; add ownership checks with each domain and implement case sharing. UM1 alone does not satisfy all FR02/FR04 or AT02 cases.
 2. Complete farms, cultivations, observations, manual tasks and archive/history behaviour.
 3. Knowledge administration and hybrid retrieval with measured lexical/vector/hybrid comparisons.
 4. Advisor review, full proposal lifecycle, transactional execution and concurrency coverage.

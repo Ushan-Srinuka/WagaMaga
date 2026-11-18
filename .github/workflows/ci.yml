@@ -1,4 +1,4 @@
-name: Foundation checks
+name: Foundation and account checks
 
 on:
   push:
@@ -62,3 +62,39 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+
+  browser:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend and create disposable configuration
+        working-directory: backend
+        run: |
+          uv sync --locked
+          uv run python ../scripts/configure_local.py
+      - name: Start PostgreSQL with pgvector
+        run: docker compose up -d --wait
+      - name: Install frontend and Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Test real account journeys on dedicated test database
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Database failure diagnostics
+        if: failure()
+        run: docker compose logs --tail 100 db
+      - name: Stop CI containers
+        if: always()
+        run: docker compose down

@@ -1,4 +1,4 @@
-"""Shared metadata for future domain models; no business tables in M0."""
+"""Shared declarative metadata; modules register only their implemented models."""
 
 from sqlalchemy.orm import DeclarativeBase
 

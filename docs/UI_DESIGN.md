@@ -1,6 +1,12 @@
 # UI design guide
 
-Status: the M0 React connection screen is implemented with loading, readiness and retry states. Business screens and user validation do not exist yet. The requirements and proposed visual direction below guide later implementation; final product design choices remain D16.
+Status: M0 connection, UM1 account screens, administrator audit history and in-app notifications are implemented locally. On 17 November 2026 the user requested merging their supplied DESIGN.md with this guide, then extending its creamy green design to the other existing screens. The shared font/palette cover home, login, registration, account, administrator list/detail/audit, notifications, dialogs, shared states and the developer connection page. [USER_MANAGEMENT.md](USER_MANAGEMENT.md) lists account boundaries. D16/D22/D25 retain the plain CSS/React Router approach. Farmer research and real-user usability validation remain pending.
+
+## Design sources and scope
+
+This guide combines the supplied **Agro-Intelligence Editorial** DESIGN.md with the existing WagaMaga navigation, accessibility, interaction and product-safety rules. Keep one maintained UI guide rather than a second competing DESIGN.md. The attached reference mixes blue/lavender front-matter surfaces with warm cream prose; the user's explicit creamy green preference resolves that conflict. Adopt its Plus Jakarta Sans typography, forest/sprout greens, generous spacing, rounded cards and restrained depth, while keeping the previously approved homepage structure.
+
+The reference's telemetry, predictive metrics, disease diagnostics, gauges and camera overlays are visual examples, not implemented capabilities or authorization to build them. Do not use colour, glows or sample panels to imply measured crop health, verified guidance or live data. Existing ownership, proposal-review and evidence rules still apply. Shared theme tokens and the local font face live in frontend/src/theme.css, loaded at the application entry point; existing homepage/account styles consume these tokens. The user's follow-up authorizes styling existing screens, without adding business features or changing authentication contracts.
 
 ## Audience and product behaviour
 
@@ -9,6 +15,10 @@ Build an English responsive interface for farmers using mobile/desktop browsers,
 The interface must distinguish an AI explanation, a proposed task change, advisor clearance, farmer acceptance and completed backend execution. Do not imply a task changed while a proposal is merely pending or approved.
 
 ## Screens and navigation
+
+The public opening page is `/`, implemented after UM1 at the user's request. Its reference-led layout has a light header, generated chilli-field photo hero, forest text, sprout green pill buttons, creamy green canvas, sage-tinted sections and rounded warm-white cards. Plus Jakarta Sans now supplies homepage headings and body text. The page follows a product-vision section with three planned feature previews, a three-step planned workflow, trust/control principles, an account invitation and grouped footer links. Section navigation wraps to a second header row on smaller screens, and cards stack on mobile. All three future feature cards carry Planned badges and Illustrative preview labels; previews contain no working farming controls, fabricated source citations or agronomic recommendations. Home restores the current session before rendering account navigation: signed-in users see their name, My account and Notifications with an unread badge; signed-out users see Log in and Create account. A temporary API outage is labelled as unknown and offers retry, rather than falsely showing signed out. Hero and footer account links follow the same session state; protected URLs retain their server checks.
+
+The local hero is an illustrative AI-generated image, disclosed in the footer and alt text, without a claim that it documents a real farm. The original PNG and an optimized 313,452-byte WebP are in frontend/public/images/; its [provenance and exact prompt](../frontend/public/images/README.md) record the built-in image-generation mode. CSS controls responsive crops and contrast. The new font is self-hosted with its license; there is no runtime external image/font host or new package dependency.
 
 | Audience | Screens | Primary work |
 | --- | --- | --- |
@@ -22,11 +32,52 @@ The interface must distinguish an AI explanation, a proposed task change, adviso
 
 Keep weather and alerts on the dashboard. Manage cultivations inside farm details. Suggested mobile primary navigation is Dashboard, Farms, Ask and Planner, with notifications/profile accessible from the header or menu. Final navigation remains a design decision.
 
-## Suggested visual direction
+## Combined visual foundations
 
-Use a calm agricultural palette with a restrained green accent, neutral surfaces, readable typography and generous form spacing. Prioritize clear text and task status over decorative charts. Treat this as a starting proposal, not a validated brand identity. Select typography, tokens and a component library before building reusable components.
+Aim for a calm editorial presentation: clear hierarchy, useful whitespace, biological greens and warm light surfaces. Keep the photographic hero and dark account invitation as the strongest visual anchors. Avoid decorative textures, glowing fake live indicators and heavy card shadows.
 
-Use consistent buttons, form fields, status badges, evidence cards, task rows, alerts and confirmation dialogs. No UI library is currently agreed.
+### Shared palette
+
+These variables in frontend/src/theme.css are the implemented source of truth. Homepage `--home-*` and account `--canvas`/`--surface`/`--ink` aliases reference them rather than duplicating palette values. They adapt the supplied palette to the user's creamy green request rather than retaining its blue/lavender surfaces.
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--color-canvas` | `#f7f8ef` | Creamy green page canvas |
+| `--color-soft` | `#edf2e5` | Soft sage sections, sidebar, footer and preview wells |
+| `--color-inset` | `#e6eddd` | Nested accents, icon tiles, profile monograms and trust strip |
+| `--color-surface` | `#fffef9` | Warm-white cards, fields, headers and dialogs |
+| `--color-forest` | `#0f2d1f` | Structural actions, selected navigation and dark anchors |
+| `--color-ink` | `#172f24` | Primary text |
+| `--color-green` | `#176b3b` | Links and focus on light backgrounds |
+| `--color-sprout` | `#38d46a` | Homepage/auth account CTA with forest text |
+| `--color-muted` | `#526052` | Descriptions and secondary text |
+| `--color-line` | `#dce4d5` | Fine card borders and separators |
+
+Keep white text on dark forest/photo zones with a dark overlay. Use dark forest text on sprout buttons; bright green is an accent rather than small text on cream. Status always needs words/icons alongside colour. The reference's lime `#a3e635` remains an optional future accent, not another homepage action colour or a crop-health claim.
+
+### Typography
+
+Brand consistency: use frontend/src/components/Brand.tsx and its shared brand.css for every rendered wordmark. The homepage's leaf icon in a sage tile, forest WagaMaga text and green AI label now appear on home/header/footer, login, registration, account/admin headers and /connection. Remove the earlier W badges and per-page/mobile logo overrides; keep the leaf visible at narrow widths. Existing home links remain intact. Plain text references to the product are not separate logos.
+
+Use **Plus Jakarta Sans**, upright variable weights 400-800, for body text, headings, forms, navigation and dialogs across existing screens. Body text is generally 15px/24px; descriptions may use 16-17px for hierarchy. Use 700 for headings/actions and 800 for display text. Keep heading tracking around -0.025em to -0.035em. Homepage hero type scales to 48px on desktop and 28-36px on narrow screens; workspace headings scale 30-44px, auth card headings 27-30px and account panel headings 24px. Preview metadata is smaller and must remain secondary to readable feature descriptions. This replaces the former account Georgia/system-font pairing.
+
+The [self-hosted Latin font record](../frontend/public/fonts/plus-jakarta-sans/README.md) includes source URLs, SHA-256 and the bundled SIL Open Font License. The unmodified variable WOFF2 is 27,348 bytes, served locally with font-display: swap and a Segoe UI/Arial fallback. No Google Fonts request is made at runtime. Current screens are English; review character coverage before adding other languages.
+
+### Layout, shape and depth
+
+Use a consistent 4/8px spacing rhythm, 24px desktop card gaps and a 1200px maximum homepage wrapper. Outer margins are 48px desktop, 32px tablet and 20px mobile. Homepage feature/workflow/trust groups use three equal columns on desktop and stack below 700px; the supplied 12/8/4-column scheme remains a broader layout reference, not a claim that every current section implements that grid.
+
+Use 24px card radii/padding, 16px inner panels, 32px desktop account-invitation corners and full-pill actions/badges. Cards have a fine sage border; dark invitation elevation uses a subtle forest-tinted ambient shadow. Avoid hover transforms that move nearby content, respect reduced motion and retain visible focus. Homepage account actions are at least 48px high, with the compact desktop header action at least 44px.
+
+### Components and future screens
+
+Structural save/confirmation actions use forest/white; homepage and auth account-entry actions use sprout/forest. Ghost actions over the photo need a visible edge and white text. Existing fields use at least 48px height, 16px corners, visible boundaries and a clear focus outline; password toggles retain accessible names and 44px targets without overlapping input text. Search, buttons, role badges and navigation use pill shapes. Destructive controls and disabled-account states retain their warning colours/wording. Planned badges and illustrative panels remain distinct from functional controls. Do not add gauges, forecasts or photo-diagnostic components merely to demonstrate this design language.
+
+### Account and shared-screen layouts
+
+Login and registration pair a dark, generated-field-image story panel with a rounded warm-white form on desktop. The image is labelled illustrative/AI-generated in its alt text and reuses the homepage asset. Mobile hides the story panel and puts the form first. Profile and administrator screens use warm-white cards over the creamy canvas; the sidebar uses soft sage with a forest/white selected link. A compact header and accessible mobile Menu retain only existing account/admin navigation. User lists reflow to mobile cards. Dialogs, notices, empty/offline/denied states and /connection share typography, colours and rounded surfaces. Native dialog focus, keyboard behaviour and existing forms/actions remain intact. Plain CSS and small React components remain selected; no UI kit or CSS framework was added.
+
+Use consistent buttons, form fields, status badges, evidence cards, task rows, alerts and confirmation dialogs as those screens are built. Preserve the interaction rules below when applying any visual direction.
 
 ## Required interaction details
 
@@ -48,6 +99,16 @@ Verify at 360 px and 1280 px without horizontal page scrolling. Use keyboard-acc
 
 Test forms and proposal actions using accessible names in React Testing Library. Use browser tests for navigation, keyboard interaction, citation viewing and mobile/desktop layouts. Capture screenshots for significant visual changes; do not treat screenshots alone as behaviour tests.
 
+## UM1 user-management screens
+
+Implemented screens are login, farmer registration, own account/profile and password editing, administrator list/detail/removal, and denied/expired/offline states. One login serves all roles. Navigation follows the actual signed-in account: My Account and administrator-only User Management. Farm/AI navigation remains later work; registration offers no role selector.
+
+Signup guidance now states 8-128 characters with at least one letter, one number and one symbol; uppercase is optional and spaces do not count as symbols. Both password fields use the 8-character minimum. Signup reports composition failures before sending a request, while the backend also validates them. Login does not apply signup composition rules to existing passwords. See USER_MANAGEMENT.md for the complete policy and API boundary.
+
+The [screen/layout table and component boundaries](USER_MANAGEMENT.md) cover desktop/mobile behaviour. Shared fields support visible labels, autocomplete and password visibility; notices announce safe results. The account page asks for the current password, new password and confirmation; it explains that other sessions will end. Administrator role/status/removal confirmations explain impact, use native modal focus containment and restore focus when cancelled. Removed accounts are visibly distinct from disabled accounts and can be filtered in the admin list. Audit history uses filters, readable event cards and expandable request/account references. Notifications show unread status and provide read/unread actions; the shared workspace nav displays the unread count. Loading, empty results, retry, stale-write and rate-limit states are implemented; unavailable recovery links are omitted.
+
+Current paths are /login, /register, /account, /admin/users and /admin/users/:id; the M0 connection screen is /connection. Screens use real account APIs and server authorization. Browser tests cover desktop/mobile reflow, reload, denied access, stale decisions and dialog keyboard/focus behaviour. Screenshots use synthetic accounts. A separate user wireframe-approval session did not occur; implementation followed the user's broad build instruction and selected style, and remains available for visual review.
+
 ## UI implementation order
 
-After M0, build the minimum screens for the V0 journey: seeded cultivation context, question/source display, proposal comparison and acceptance result. Expand to full role-based screens and record management in V1. Pair UI work with its API contract and failure states rather than building all static screens first.
+After M0, complete the early UM1 scope and its review/check gates. The later V0 journey adds cultivation context, question/source display, proposal comparison and acceptance result. Expand to complete domain screens in V1. Pair UI work with its API contract and failure states; a visual prototype alone does not establish working authentication or permissions.

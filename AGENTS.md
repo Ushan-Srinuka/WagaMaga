@@ -3,7 +3,7 @@
 ## Context and scope
 
 - Read the SRS and architecture for architectural work; for a focused task, read the relevant requirements and supporting guide.
-- The M0 scaffold contains a React connection screen, FastAPI health endpoints, PostgreSQL/pgvector migration setup and a worker entry point. Business features remain unimplemented. Implement further application code only within the user's requested milestone or feature.
+- M0 is complete. UM1 adds local user registration/login, revocable sessions, profile and administrator account screens/APIs with identity migrations and tests. Farming/AI features remain unimplemented. Implement further code only within the user's requested milestone or feature; TESTING.md distinguishes local evidence from remote CI.
 - Keep React, FastAPI, PostgreSQL/pgvector, private document storage and a separate worker. Record supporting-tool decisions in docs/DECISIONS.md.
 - Use docs/CODEX_WORKFLOW.md and docs/ROADMAP.md to scope work. Complete the requested scope without adding unrelated features.
 

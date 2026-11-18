@@ -14,7 +14,14 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     env_file = root / ".env"
     if env_file.exists():
-        print("Existing .env preserved; no credentials changed.")
+        content = env_file.read_text(encoding="utf-8")
+        if not any(line.startswith("AUTH_SIGNING_KEY=") for line in content.splitlines()):
+            with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+                stream.write("\n# UM1 server-only signing key; never commit.\n")
+                stream.write(f"AUTH_SIGNING_KEY={secrets.token_hex(32)}\n")
+            print("Existing settings preserved; added a new server-only authentication key.")
+        else:
+            print("Existing .env preserved; no credentials changed.")
         return
     bootstrap_password = secrets.token_hex(24)
     app_password = secrets.token_hex(24)
@@ -40,6 +47,7 @@ def main() -> None:
             "wagamaga_bootstrap", bootstrap_password, "wagamaga_test"
         ),
         "DOCUMENT_STORAGE_PATH": ".data/documents",
+        "AUTH_SIGNING_KEY": secrets.token_hex(32),
     }
     with env_file.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write("# Local development only. Generated credentials; never commit this file.\n")

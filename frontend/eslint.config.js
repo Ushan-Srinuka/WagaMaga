@@ -6,7 +6,13 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { globalIgnores } from 'eslint/config'
 
 export default tseslint.config(
-  globalIgnores(['dist', 'coverage', 'node_modules']),
+  globalIgnores([
+    'dist',
+    'coverage',
+    'node_modules',
+    'test-results',
+    'playwright-report',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -20,5 +26,8 @@ export default tseslint.config(
       ],
     },
   },
-  { files: ['vite.config.ts'], languageOptions: { globals: globals.node } },
+  {
+    files: ['vite.config.ts', 'playwright.config.ts', 'e2e/**/*.{ts,mjs}'],
+    languageOptions: { globals: globals.node },
+  },
 )

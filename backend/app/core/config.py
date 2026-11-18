@@ -24,6 +24,30 @@ class Settings(BaseSettings):
     app_db_user: str = Field(default="wagamaga_app", pattern=r"^[a-z_][a-z0-9_]{0,62}$")
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     document_storage_path: Path = PROJECT_ROOT / ".data" / "documents"
+    auth_signing_key: SecretStr | None = None
+    auth_issuer: str = "wagamaga-api"
+    auth_audience: str = "wagamaga-web"
+    auth_access_minutes: int = Field(default=15, ge=1, le=60)
+    auth_session_days: int = Field(default=7, ge=1, le=30)
+    auth_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+            "http://127.0.0.1:8000",
+            "http://localhost:8000",
+        ]
+    )
+    auth_login_failures: int = Field(default=5, ge=1, le=100)
+    auth_login_ip_attempts: int = Field(default=50, ge=1, le=1000)
+    auth_registration_attempts: int = Field(default=5, ge=1, le=100)
+    auth_refresh_attempts: int = Field(default=30, ge=1, le=1000)
+
+    @field_validator("auth_signing_key")
+    @classmethod
+    def long_signing_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value().encode()) < 32:
+            raise ValueError("AUTH_SIGNING_KEY must contain at least 32 bytes")
+        return value
 
     @field_validator("document_storage_path")
     @classmethod
@@ -44,7 +68,7 @@ class Settings(BaseSettings):
                 raise ValueError("Use postgresql+psycopg; other database engines are not supported")
         return value
 
-    @field_validator("cors_allowed_origins")
+    @field_validator("cors_allowed_origins", "auth_allowed_origins")
     @classmethod
     def explicit_origins(cls, origins: list[str]) -> list[str]:
         for origin in origins:

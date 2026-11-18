@@ -1,125 +1,94 @@
-import { useEffect, useState } from 'react'
-import { readFoundationHealth } from './lib/api'
+import { Navigate, Outlet, Route, Routes } from 'react-router'
+import AccountShell from './app/AccountShell'
+import FoundationPage from './app/FoundationPage'
+import SessionProvider from './app/SessionProvider'
+import { useSession } from './app/session-context'
+import AccountPage from './features/account/AccountPage'
+import AuthPage from './features/auth/AuthPage'
+import AuditPage from './features/audit/AuditPage'
+import HomePage from './features/home/HomePage'
+import NotificationsPage from './features/notifications/NotificationsPage'
+import UserDetailPage from './features/users/UserDetailPage'
+import UsersPage from './features/users/UsersPage'
 import './App.css'
+import './user-management.css'
 
-type Connection =
-  | { state: 'loading' }
-  | { state: 'connected'; databaseReady: boolean }
-  | { state: 'error' }
+function Protected({ admin = false }: { admin?: boolean }) {
+  const { user, phase, restore } = useSession()
+  if (phase === 'loading')
+    return (
+      <main className="session-state" role="status">
+        Restoring your session…
+      </main>
+    )
+  if (phase === 'offline')
+    return (
+      <main className="session-state">
+        <h1>Let’s reconnect.</h1>
+        <p role="alert">
+          Your account could not be reached. Check your connection.
+        </p>
+        <button
+          onClick={() => {
+            void restore()
+          }}
+        >
+          Try again
+        </button>
+      </main>
+    )
+  if (!user) return <Navigate to="/login" replace />
+  if (admin && user.role !== 'administrator')
+    return (
+      <section className="panel">
+        <h1>Access denied</h1>
+        <p>Administrator access is required to manage other accounts.</p>
+      </section>
+    )
+  return <Outlet />
+}
+
+function ProductRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<AuthPage key="login" />} />
+      <Route path="/register" element={<AuthPage key="register" register />} />
+      <Route element={<Protected />}>
+        <Route element={<AccountShell />}>
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route element={<Protected admin />}>
+            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/admin/users/:id" element={<UserDetailPage />} />
+            <Route path="/admin/audit" element={<AuditPage />} />
+          </Route>
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/account" replace />} />
+    </Routes>
+  )
+}
 
 export default function App() {
-  const [attempt, setAttempt] = useState(0)
-  const [connection, setConnection] = useState<Connection>({ state: 'loading' })
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 8000)
-    let cancelled = false
-
-    async function check() {
-      try {
-        const health = await readFoundationHealth(controller.signal)
-        if (!controller.signal.aborted) {
-          setConnection({
-            state: 'connected',
-            databaseReady: health.databaseReady,
-          })
-        }
-      } catch {
-        if (!cancelled) setConnection({ state: 'error' })
-      } finally {
-        window.clearTimeout(timeout)
-      }
-    }
-
-    void check()
-    return () => {
-      cancelled = true
-      controller.abort()
-      window.clearTimeout(timeout)
-    }
-  }, [attempt])
-
-  function refresh() {
-    setConnection({ state: 'loading' })
-    setAttempt((value) => value + 1)
-  }
-
-  const connected = connection.state === 'connected'
   return (
-    <div className="shell">
-      <header className="brand">
-        <span className="brand-mark" aria-hidden="true">
-          W
-        </span>
-        <span>WagaMaga AI</span>
-      </header>
-      <main>
-        <p className="eyebrow">M0 / Project foundation</p>
-        <h1>A foundation for informed cultivation.</h1>
-        <p className="intro">
-          WagaMaga brings farming guidance and cultivation activities together.
-          This first build checks the application connection. Farm records,
-          advisory and planning will arrive in later milestones.
-        </p>
-        <section
-          className="connection-panel"
-          aria-labelledby="connection-title"
-        >
-          <div className="panel-heading">
-            <h2 id="connection-title">Connection status</h2>
-            <button onClick={refresh} disabled={connection.state === 'loading'}>
-              Check connection
-            </button>
-          </div>
-          <div
-            className="status-grid"
-            aria-live="polite"
-            aria-busy={connection.state === 'loading'}
-          >
-            <div className="status-item">
-              <span className="status-label">API</span>
-              <strong>
-                {connection.state === 'loading'
-                  ? 'Checking...'
-                  : connected
-                    ? 'Connected'
-                    : 'Unavailable'}
-              </strong>
-            </div>
-            <div className="status-item">
-              <span className="status-label">Database</span>
-              <strong>
-                {connection.state === 'loading'
-                  ? 'Checking...'
-                  : connected && connection.databaseReady
-                    ? 'Ready'
-                    : 'Not ready'}
-              </strong>
-            </div>
-          </div>
-          {connection.state === 'error' && (
-            <p className="notice" role="alert">
-              The API could not be reached. Start the API and try again.
-            </p>
-          )}
-          {connected && !connection.databaseReady && (
-            <p className="notice">
-              The API is running. Check PostgreSQL and apply the database
-              migration.
-            </p>
-          )}
-          <a
-            className="docs-link"
-            href="/docs"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open API documentation <span aria-hidden="true">↗</span>
-          </a>
-        </section>
-      </main>
-      <footer>Evidence first. Human decisions. Traceable activities.</footer>
-    </div>
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <SessionProvider>
+            <HomePage />
+          </SessionProvider>
+        }
+      />
+      <Route path="/connection" element={<FoundationPage />} />
+      <Route
+        path="*"
+        element={
+          <SessionProvider>
+            <ProductRoutes />
+          </SessionProvider>
+        }
+      />
+    </Routes>
   )
 }

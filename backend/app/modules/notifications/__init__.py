@@ -1,1 +1,1 @@
-"""Future notifications domain module; no business features in M0."""
+"""Recipient-scoped in-app notifications."""

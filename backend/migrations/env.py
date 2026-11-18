@@ -5,6 +5,8 @@ from sqlalchemy import create_engine, pool
 
 from app.core.config import Settings
 from app.db.base import Base
+from app.modules.identity import models  # noqa: F401 - register migration metadata
+from app.modules.notifications import models as notification_models  # noqa: F401
 
 config = context.config
 target_metadata = Base.metadata

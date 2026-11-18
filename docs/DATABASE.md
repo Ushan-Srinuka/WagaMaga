@@ -1,6 +1,6 @@
 # Database and migrations
 
-Status: M0 migration `0001_foundation` enables pgvector and grants the restricted application role SELECT on Alembic revision metadata. Compose initialization creates separate development/test databases and the app role. No business tables or AI indexes exist yet. The logical model below remains the baseline for future migrations.
+Status: migrations `0001_foundation` through `0004_in_app_notifications` enable pgvector, add UM1 identity/session/rate-limit/audit tables, add privacy-scrubbed account removal and add recipient-owned notifications. The app role has notification SELECT/INSERT/UPDATE only; audit remains SELECT/INSERT. Compose initialization creates separate development/test databases and a restricted app role. Farm/AI tables and indexes remain unimplemented. The other logical entities below remain a future baseline.
 
 ## Storage boundaries
 
@@ -18,6 +18,12 @@ Use PostgreSQL for business state, full text search, pgvector embeddings, durabl
 | Operations | jobs, outbox_events, audit_logs |
 
 Use architecture field definitions as the baseline. Add tables when their slice needs them; M0 does not require the complete business schema.
+
+## UM1 identity schema
+
+[USER_MANAGEMENT.md](USER_MANAGEMENT.md) describes the implemented identity scope. `users` has UUID/unique case-insensitive normalized email, display_name, password_hash, checked role, disabled_at/deleted_at, version and UTC timestamps. Removed accounts are scrubbed tombstones so audit and future domain references remain valid; ordinary account rows are not hard-deleted. `refresh_sessions` stores stable user-owned families with absolute expiry/revocation; `refresh_tokens` stores unique hashes and consumption time, inheriting expiry/revocation from its family. Used hashes remain available to detect replay. `auth_rate_limits` stores keyed identifiers, fixed-window counts and expiry; expired buckets are removed during checks. `audit_logs` stores actor/target FKs, action, old/new values, reason, request ID and timestamp. `notifications` stores recipient FK, trusted account event type, title/body, creation time and nullable read time; its recipient/time index supports scoped inbox pagination. Notification retention is not yet defined. There are no farm, knowledge or task tables in UM1.
+
+Database constraints enforce normalized-email and token-hash uniqueness, roles, positive versions and references. Session mutation locks user then family; administrator lifecycle operations also take a shared transaction advisory lock and recheck the actor. Role/status/removal changes, password-hash changes, session revocation and audit insertion commit or roll back together. Refresh replay revocation explicitly commits before its denial response. Real concurrent-connection, immediate/deferred audit-failure and migration-rebuild tests cover these rules. The app has identity DML and audit SELECT/INSERT, with no audit UPDATE/DELETE or schema-create access. Bootstrap/migration credentials remain separate. Long-term session/audit retention and real-user deletion policy remain unresolved; the implemented removal is an identity scrub/tombstone, not a retention policy or physical deletion.
 
 ## Integrity rules
 

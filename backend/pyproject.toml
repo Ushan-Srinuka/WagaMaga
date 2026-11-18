@@ -5,9 +5,12 @@ description = "WagaMaga AI API and worker foundation"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "alembic>=1.20,<2",
+    "email-validator>=2,<3",
     "fastapi>=0.115,<1",
     "psycopg[binary]>=3.3,<3.4",
+    "pwdlib[argon2]>=0.3,<1",
     "pydantic-settings>=2.10,<3",
+    "pyjwt>=2.10,<3",
     "sqlalchemy>=2.1,<2.2",
     "uvicorn>=0.35,<1",
 ]
