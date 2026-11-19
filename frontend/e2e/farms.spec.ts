@@ -419,6 +419,9 @@ test('stale drafts require reload and private record links deny other owners', a
   await page.goto('/account')
   await menu(page)
   await page.getByRole('button', { name: /Sign out/ }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Make yourself at home.' }),
+  ).toBeVisible()
   await login(page, other.email)
   await page.goto('/farms')
   await expect(
