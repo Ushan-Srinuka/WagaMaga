@@ -81,7 +81,11 @@ test('stale administrator edits reload the record and require a fresh decision',
   await page.getByLabel('Reason for change').fill('Synthetic stale decision')
   await page.getByRole('button', { name: 'Review role change' }).click()
   await page.getByRole('button', { name: 'Confirm change' }).click()
-  await expect(page.getByRole('alert')).toContainText('This account changed')
+  await expect(
+    page.getByText('This account changed. Reload it before saving.', {
+      exact: true,
+    }),
+  ).toBeVisible()
   await expect(page.getByRole('dialog')).not.toBeVisible()
   await expect(page.getByLabel('Account role')).toHaveValue('administrator')
   await fit(page)
