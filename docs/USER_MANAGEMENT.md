@@ -25,13 +25,17 @@ Included: local synthetic accounts, sessions and revocation, protected account e
 ## Implemented user journeys
 
 1. Register with display name, email, password and password confirmation. The server accepts only account fields and always assigns farmer; reject attempts to supply role, status or ownership fields. Do not automatically log in after registration. Use a generic acknowledgement for both a new account and an existing email, without saying an email was sent. Continue to login.
-2. Login with email/password. Return the same safe failure for an unknown email, wrong password or disabled account. On success, return to the landing page, which confirms the signed-in account and offers My account, Notifications and the unread count. No empty farm or AI dashboard is introduced.
+2. Login with email/password. Return the same safe failure for an unknown email, wrong password or disabled account. Farmers return to the landing page, which offers farm entry in its header/hero, My account, Notifications and the unread count. Advisors open My Account and administrators Admin Overview. No empty farm or AI dashboard is introduced.
 3. Reload a protected page. Restore the session through a rotated refresh cookie before rendering private account data. An expired/revoked session returns the user to login with a clear explanation.
 4. Edit the signed-in user's display name or change the password after verifying the current password. The new password uses the signup rule; other sessions are revoked and this session remains active. Email changes and recovery remain unavailable.
 5. An administrator searches a bounded, paginated user list, filters role/status, opens an account and confirms a role/status change or permanent removal with a reason. Removal scrubs sign-in identifiers/credentials, revokes sessions, leaves an audit-preserving tombstone and is excluded from ordinary account results. The deleted filter shows only scrubbed tombstones. Self-removal and removal that would eliminate the final active administrator are rejected. Show stale-write conflicts and refresh the record before retrying.
 6. Logout revokes the current session and clears browser state/cookie. Role changes, disablement, account removal and password changes revoke affected sessions atomically. Re-enabling an account does not reactivate old sessions.
 
 ## Permission matrix
+
+D30 follow-up: administrator login opens Admin Overview, farmers return to the website landing page and advisors open My Account. Dedicated reporting endpoints allow audited count-only aggregate/per-farmer metadata. This adds no general private-record permission: farm names, coordinates, observations, chats and owner actions remain inaccessible to administrators. Current farmer account pages show only record counts, excluding workspace-deleted farms. [ADMIN_REPORTING.md](ADMIN_REPORTING.md) defines the scope.
+
+Website-support follow-up (D29): Help is public. Farmers can create/read/reply/resolve/reopen their own submitted requests; administrators can handle those conversations through Support inbox, but cannot open farms or private AI chats. Advisors are excluded from both support APIs. Generic support notices remain recipient-owned. Public contact email is separately configured, and support does not reset passwords or replace identity verification. See [SUPPORT.md](SUPPORT.md).
 
 | Operation | Anonymous | Farmer/advisor | Administrator |
 | --- | --- | --- | --- |
@@ -128,6 +132,7 @@ The initial warm green direction was selected on 16 November 2026. On 17 Novembe
 | --- | --- |
 | `/` | Public opening homepage, product introduction, clearly labelled future capabilities and login/register links; no session/API dependency |
 | `/login` | Simple brand header, centered form, email/password, show-password control, login button and register link |
+| `/` after farmer login | Public website landing-page header/hero with farmer-only farm selection and direct add/continue actions. Other roles open `/account`; no farmer requests are issued for them. The old farmer `/dashboard` URL redirects home. |
 | `/register` | Matching form with display name/email/password/confirmation and clear farmer-only registration wording |
 | `/account` | Responsive signed-in header/menu, own name/email/role/status, editable display name, current-password-confirmed password change and sign-out action |
 | `/admin/users` | Reusable app shell, user count for the filtered list, search, role/status filters including removed records and paginated rows; stacked account cards on mobile |

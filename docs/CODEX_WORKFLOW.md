@@ -53,6 +53,10 @@ Inspect the diff and verify that the documented local startup works. Resolve mis
 
 ## Next after M0: UM1 user management only
 
+Authorized follow-ups, 19 November 2026: Help/support adds a public Help page, farmer-owned submitted requests and a scoped admin inbox under [SUPPORT.md](SUPPORT.md), using `0007_support`. Treat it as website support, not farm sharing, account recovery or advisor cases. The subsequent [Admin Overview](ADMIN_REPORTING.md) implements audited platform/per-farmer count metadata without private farm access or a schema change. Review/publication/remote CI gates are still pending.
+
+Current farming follow-up, 18 November 2026: FR-A planning, FR-B persistence, FR-C owner-only APIs and FR-D connected screens now exist following their explicit requests. [FARM_RECORDS.md](FARM_RECORDS.md) defines the FR-E review/delivery checkpoint. Local PostgreSQL/component/desktop/mobile results are recorded; remote CI remains pending. Preserve UM1 and M1's broader evidence-proof gate; historical V0 examples do not authorize AI/weather/task execution with records.
+
 Read USER_MANAGEMENT.md for the implemented scope. The earlier planning-only task was followed by an explicit request to implement the backend/frontend. Choices were selected within that scope and connected screens are now available for review. Current follow-up work is review/publication and remote CI; do not rerun the historical implementation prompt against already implemented tables or bootstrap a default account.
 
 UM1-B persistence/bootstrap, UM1-C backend identity and UM1-D connected screens exist. Local UM1-E tests pass, with expanded remote CI still unverified. Full AT02 remains pending until farm, case, source and job domains exist. Do not add those features just to demonstrate identity or mistake component mocks for server authorization.
@@ -189,4 +193,4 @@ Run AT01-AT12, the 30-question evaluation, frontend/browser checks, measured lat
 
 At each checkpoint, update the roadmap with actual completion/evidence and the decision register with resolved choices. Update the API/UI/database/setup guides when contracts change. A new Codex chat should be able to determine the current state from the repository and tests without relying on hidden conversation history.
 
-Current checkpoint: M0 is complete and UM1 implemented/verified locally. Use DEVELOPMENT.md to run it and create the first administrator interactively; inspect TESTING.md for the real 38 backend/11 frontend/6 browser results and outstanding remote CI. Review the account UI and any remaining account-policy needs as bounded follow-ups. Case sharing and farm/AI workflows remain later work and require their own request. The historical prerequisite audit is dated evidence, not current installed-tool state.
+Current checkpoint: M0/local UM1, Farm Records FR-B/FR-C/FR-D, Help/support and Admin Overview are implemented. Use DEVELOPMENT.md for setup and TESTING.md for actual backend/frontend/browser results and outstanding remote CI. FARM_RECORDS.md defines the next FR-E review/delivery checkpoint. Curated-source preparation follows the delivery checks; case sharing, tasks and AI remain later work requiring their own request. The historical prerequisite audit is dated evidence, not current installed-tool state.

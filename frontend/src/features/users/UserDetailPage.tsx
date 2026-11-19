@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useSession } from '../../app/session-context'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Notice from '../../components/Notice'
+import { FarmerRecordSummary } from '../reporting/OverviewPage'
 import { ApiError, request, type Account, type Role } from '../../lib/accounts'
 
 export default function UserDetailPage() {
@@ -131,6 +132,12 @@ export default function UserDetailPage() {
       {error && !pending && <Notice message={error} />}
       {account.deleted_at && (
         <Notice message="This account has been removed. Its sign-in details were erased and its administrative history was retained." />
+      )}
+      {account.role === 'farmer' && !account.deleted_at && (
+        <FarmerRecordSummary
+          key={`${account.id}:${account.version}`}
+          userId={account.id}
+        />
       )}
       <section
         className="panel account-management"

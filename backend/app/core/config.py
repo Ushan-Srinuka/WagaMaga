@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
+from email_validator import EmailNotValidError, validate_email
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
@@ -41,6 +42,19 @@ class Settings(BaseSettings):
     auth_login_ip_attempts: int = Field(default=50, ge=1, le=1000)
     auth_registration_attempts: int = Field(default=5, ge=1, le=100)
     auth_refresh_attempts: int = Field(default=30, ge=1, le=1000)
+    support_contact_email: str | None = None
+
+    @field_validator("support_contact_email", mode="before")
+    @classmethod
+    def public_support_email(cls, value):
+        if value is None or isinstance(value, str) and not value.strip():
+            return None
+        if not isinstance(value, str):
+            raise ValueError("SUPPORT_CONTACT_EMAIL must be a valid public support email")
+        try:
+            return validate_email(value.strip(), check_deliverability=False).normalized
+        except EmailNotValidError, TypeError:
+            raise ValueError("SUPPORT_CONTACT_EMAIL must be a valid public support email") from None
 
     @field_validator("auth_signing_key")
     @classmethod

@@ -1,16 +1,26 @@
 # API guide
 
-Status: M0 health, UM1 identity/account, administrator audit history and recipient-scoped in-app notification endpoints are implemented locally. Farming/advisory/planning routes remain planned. `GET /health/live` returns 200 for process liveness; `/health/ready` returns 200 only when PostgreSQL, pgvector and `0004_in_app_notifications` are ready, otherwise 503. These public operational routes are outside `/api/v1`. OpenAPI/Swagger are available in development/test and disabled by default in production configuration.
+Status: M0 health, UM1 identity/accounts/audit/notifications and FR-C owner-scoped Farm Records endpoints are implemented locally; FR-D now connects their screens. Advisory/planning and remote CI remain pending. `GET /health/live` returns 200 for process liveness; `/health/ready` returns 200 only when PostgreSQL, pgvector and `0007_support` are ready, otherwise 503. These operational routes are outside `/api/v1`. OpenAPI/Swagger are available in development/test and disabled by default in production configuration.
 
 ## Contract ownership
 
+Administrator reporting follow-up (D30): `GET /api/v1/admin/overview` returns a count snapshot, and `GET /api/v1/admin/users/{user_id}/farm-summary` returns counts for a current non-removed farmer. Both require a live administrator and successful minimal report-view audit. They reveal counts only; existing private farm/child/history routes still deny administrators. [ADMIN_REPORTING.md](ADMIN_REPORTING.md) defines populations, role/archive/delete handling and the exact response fields. No migration or farm access privilege is added; schema stays `0007_support`.
+
+Help/support follow-up (D29), 19 November 2026: public `GET /api/v1/help/contact` returns only the configured support email (nullable), without auth or database access. Farmer-owned `/api/v1/support/tickets` and admin `/api/v1/admin/support/tickets` provide lists/details, paginated messages, versioned replies and status transitions. Only submitted text is shared with administrators; support grants no farm/chat access or recovery bypass. Strict bodies, role/owner checks, rate limits, atomic message/event/notification writes, no-store/request IDs and no mutation replay apply. [SUPPORT.md](SUPPORT.md) owns fields, limits and routes; OpenAPI owns exact schemas. Generic `support_updated` notices contain no subject/message text and link to the farmer's support list.
+
+Farm lifecycle follow-up (D28), 19 November 2026: `POST /api/v1/farms/{id}/restore` accepts `{expected_version}` and returns the restored FarmOut (200). It clears only the farm archive; independently archived cultivations stay archived. A current-version repeat on an active farm is a no-op; stale commands return 409.
+
+`POST /api/v1/farms/{id}/delete` accepts `{expected_version, confirmation_name}` and returns `{id, deleted: true, message}` (200). It requires an owned archived farm and the current name. Active farms return 409 `ARCHIVE_REQUIRED`; a mismatched name returns 422 `CONFIRMATION_MISMATCH`. It deletes access from the workspace, retaining historical data in storage. Removed farms are excluded from all list statuses/search/counts, and all their farm/child/history/mutation/restore URLs return generic 404. No deleted-items or permanent-erasure endpoint is added. Both commands retain live owner/session checks, strict input allowlists, browser write protections, atomic revision/audit/marker writes, optimistic versions and no automatic browser replay.
+
+Farmer UX follow-up, 19 November 2026: The `/` landing-page hero composes existing owner-only Farm Records reads for signed-in farmers; `/dashboard` only redirects farmers to `/`. District/village selection builds the existing `location` label, and explicit browser geolocation fills the optional coordinate pair before normal save. There is no new location/geocoding endpoint, structured district field, region-eligibility flag or guidance coverage claim. Existing owner, version, validation and atomic history/audit contracts still apply.
+
 Use `/api/v1` for application routes. Once implemented, FastAPI-generated OpenAPI describes actual request/response schemas; this guide explains conventions, permissions and workflows. Keep routes, generated schemas, examples and tests consistent. Do not manually maintain a second complete schema in Markdown.
 
-The server derives the actor from validated authentication. It does not trust client owner IDs. Every protected object lookup checks ownership or assigned case scope, including sources and job status. Define a consistent 403/404 policy before the first domain API.
+The server derives the actor from validated authentication. It does not trust client owner IDs. Farm lookups enforce owner scope; future sources/jobs must enforce ownership or assigned case scope too. Farm policy is 403 for excluded roles before lookup and uniform 404 for non-owned/missing records.
 
 ## UM1 implemented account contract
 
-The identity/account route set, request boundaries, permission matrix and error outcomes are listed in [USER_MANAGEMENT.md](USER_MANAGEMENT.md) and generated OpenAPI. D19-D25 record implementation choices under the user's account and notification requests. Existing public liveness behaviour is unchanged; readiness now expects migration `0004_in_app_notifications`.
+The identity/account route set, request boundaries, permission matrix and error outcomes are listed in [USER_MANAGEMENT.md](USER_MANAGEMENT.md) and generated OpenAPI. D19-D25 record implementation choices under the user's account and notification requests. Existing public liveness behaviour is unchanged; readiness now expects migration `0007_support` after FR-B.
 
 Implemented routes include display-name-only `PATCH /me`, self-service `POST /me/password`, `GET /admin/users`, `GET /admin/users/{id}`, `PATCH /admin/users/{id}/role` or `/status`, and `DELETE /admin/users/{id}`, alongside register/login/refresh/logout/me. Public registration cannot select an elevated role. Registration returns the same generic 200 acknowledgement for new/existing email, without user ID/tokens; this is a privacy exception to normal 201 creation responses. Login/refresh return `access_token`, `token_type`, `expires_in` and a safe `user` projection, plus an HttpOnly refresh cookie. Logout is an idempotent 204 for valid browser-origin/header requests. Responses never include password hashes or raw refresh tokens in JSON.
 
@@ -26,9 +36,39 @@ User lists accept `q` (up to 100 characters), `role`, `status=enabled|disabled|d
 
 Account errors use 401 for absent/invalid/revoked authentication, 403 for non-admin access before target lookup, 404 for an absent target after authorization, 409 for stale/self/last-admin conflicts, safe 422 validation, 429 plus Retry-After for limits and 503 for unavailable/unconfigured identity. Private/token responses use no-store. Validation errors omit raw inputs/context; stack traces and tokens are not returned. Refresh replay revokes the family and clears the cookie; concurrent refresh can therefore invalidate the first winner's token. Clients serialize refresh, do not automatically retry an uncertain rotation and return to login when reauthentication is required.
 
-## Planned route groups
+## FR-C implemented Farm Records contract
 
-Paths below are relative to `/api/v1`. Identity is implemented as above; the other groups remain representative planned contracts. Exact schemas and omitted CRUD details are finalized when their slice is built.
+The [Farm Records specification](FARM_RECORDS.md) lists all 21 implemented operations across 15 paths, including nested cultivation/observation CRUD, confirmation, archives, farm restore/workspace deletion and owner-only history. Generated OpenAPI defines exact schemas. There is no administrator farm endpoint, ownership transfer, physical-erasure or advisor-sharing route. Cultivation restore/deletion remains excluded.
+
+FR-D consumes this unchanged contract. Its frontend routes start at `/farms`; observation history includes the farm/cultivation context in the UI URL while using the corresponding authorized API parent path. Farm writes use the shared session client with unauthorized replay disabled: 401 clears private UI state and requires sign-in, while GET retains existing serialized refresh. A 409 retains the draft until explicit reload; uncertain 0/503 creation never automatically retries. Areas stay strings, device-local observation entry converts to UTC, and unchanged observation time is sent exactly when editing only notes. These are client interaction rules, not substitutes for server authorization.
+
+Every service checks a live enabled farmer and session, independently of route guards. Parent queries enforce `farms.farmer_id`; non-owned/missing IDs and mismatched parent chains return the same `404 RECORD_NOT_FOUND`. Advisors/administrators receive 403 before lookup. Revoked/expired sessions and disabled/removed accounts return 401. All domain responses, including errors, use no-store and request IDs. Body validation errors omit raw private values.
+
+Collections use `{items,total,page,page_size}`, page 1-10000 and page_size default 20/max 100; unknown query parameters are rejected. Owner filtering precedes totals, pagination and literal search. Farm filters: q and status active/archived/all. Cultivations: effective parent archive status and crop_type_id. Observations: inclusive UTC from_date/to_date, ordered by observed_at descending/UUID ascending. Farm/cultivation order is created_at descending/UUID ascending; history is version descending. The crop catalogue lists supported entries only. Existing account/audit pagination is unchanged.
+
+Writes reuse the exact Origin/client-header/JSON protections. Create returns 201; PATCH, confirmation and archive return 200. PATCH/commands require a strict positive integer expected_version; stale requests return `409 RECORD_VERSION_CONFLICT`. Archived parents block writes with `409 RECORD_ARCHIVED`, while reads/history remain available. Farm archive makes descendants effectively archived without rewriting their own archive timestamp. Repeating an explicit archive with the current version returns the stored entity without another effect; stale repeats conflict. Active-record no-op PATCH does not increment versions or add evidence.
+
+Record changes, immutable revision and private audit event commit together under actor-user/session/farm/cultivation/observation locks. A waiting writer rechecks live state after acquiring those locks. Commit-time database failure returns safe 503, with no partial record/history or premature success. Manual create POSTs have no idempotency-key contract; after an uncertain response reload rather than automatically retrying. Stage confirmation body is `{ "expected_version": 1, "stage": "Farmer-reported seedling" }`; provenance is server-derived and crop/planting-date changes clear current confirmation while preserving history.
+
+Required fields/lengths and precision are in FARM_RECORDS.md/OpenAPI. Coordinates/area accept decimal strings or JSON numbers and serialize as strings. Dates are ISO local dates; observation timestamps require an offset, normalize to UTC and cannot be future. Timezone must exist in PostgreSQL's timezone catalogue. Unsupported/missing crop assignment returns safe 422, not a foreign-key trace. Soil unknown/blank is null, and no stage estimate is generated. Farm/cultivation/observation detail responses include effective_archived; cultivations also include planned relative to the farm timezone. History returns typed snapshots, revision IDs/versions and editor/time, without account email/session data.
+
+Example creation bodies, using the selected supported crop UUID from `GET /crop-types`:
+
+```json
+{ "name": "Synthetic farm", "location": "Synthetic location", "timezone": "Asia/Colombo", "area_value": "2.5", "area_unit": "ha" }
+```
+
+```json
+{ "crop_type_id": "1e7402ea-35ab-4673-a8de-834c4bb70401", "planting_date": "2027-01-15", "area_value": "1.25", "area_unit": "ha", "soil_notes": null }
+```
+
+```json
+{ "observed_at": "2026-11-01T08:00:00+05:30", "notes": "Synthetic observation; no agricultural recommendation" }
+```
+
+## Other route groups and future scope
+
+Paths below are relative to `/api/v1`. Identity, farms/cultivations/observations and notifications are implemented as above. Remaining groups are representative future contracts, finalized with their own slice.
 
 | Group | Representative routes | Scope |
 | --- | --- | --- |

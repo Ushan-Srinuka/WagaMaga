@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
+import { apiPort, webOrigin } from './e2e/environment.ts'
 
 process.env.E2E_RUN_ID ??= randomBytes(8).toString('hex')
 process.env.E2E_PASSWORD ??= `Test1!${randomBytes(24).toString('hex')}`
@@ -14,7 +15,7 @@ export default defineConfig({
   expect: { timeout: 10000 },
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: webOrigin,
     headless: true,
     channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
     screenshot: 'off',
@@ -28,13 +29,13 @@ export default defineConfig({
   webServer: [
     {
       command: 'node e2e/start-api.mjs',
-      url: 'http://127.0.0.1:8000/health/ready',
+      url: `http://127.0.0.1:${apiPort}/health/ready`,
       reuseExistingServer: false,
       timeout: 60000,
     },
     {
       command: 'npm run dev',
-      url: 'http://127.0.0.1:5173',
+      url: webOrigin,
       reuseExistingServer: false,
       timeout: 30000,
     },

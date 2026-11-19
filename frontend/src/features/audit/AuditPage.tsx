@@ -10,6 +10,7 @@ type AuditAction =
   | 'account_deleted'
   | 'password_changed'
   | 'audit_viewed'
+  | 'report_viewed'
 
 type AuditEvent = {
   id: string
@@ -39,6 +40,7 @@ const actionLabels: Record<AuditAction, string> = {
   account_deleted: 'Account removed',
   password_changed: 'Password changed',
   audit_viewed: 'Audit history viewed',
+  report_viewed: 'Count summary viewed',
 }
 
 function formatDate(value: string) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { request } from '../../lib/accounts'
 import type { Notification, NotificationPage } from '../../lib/notifications'
 import Notice from '../../components/Notice'
@@ -92,7 +93,7 @@ export default function NotificationsPage() {
             <h1>
               Notifications<span>.</span>
             </h1>
-            <p>Account updates that are just for you.</p>
+            <p>Account and support updates that are just for you.</p>
           </div>
           <span className="count-label">
             {page?.unread_count ?? '—'} unread
@@ -147,6 +148,11 @@ export default function NotificationsPage() {
                         )}
                       </div>
                       <p>{item.body}</p>
+                      {item.event_type === 'support_updated' && (
+                        <p>
+                          <Link to="/support">Open My support requests</Link>
+                        </p>
+                      )}
                       <time dateTime={item.created_at}>
                         {formatDate(item.created_at)}
                       </time>
@@ -188,7 +194,8 @@ export default function NotificationsPage() {
         ) : null}
       </section>
       <p className="page-footnote">
-        These are in-app account updates. Email notifications are not enabled.
+        These are in-app account and support updates. Email notifications are
+        not enabled.
       </p>
     </>
   )

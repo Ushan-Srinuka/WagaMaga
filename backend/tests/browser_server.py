@@ -27,6 +27,11 @@ def main():
         if not (make_url(url.get_secret_value()).database or "").endswith("_test"):
             raise RuntimeError("Refusing browser fixtures outside an _test database")
     run_id = os.environ["E2E_RUN_ID"]
+    api_port = int(os.environ.get("E2E_API_PORT", "8000"))
+    web_port = int(os.environ.get("E2E_WEB_PORT", "5173"))
+    if not all(1024 <= port <= 65535 for port in (api_port, web_port)):
+        raise RuntimeError("E2E ports must be between 1024 and 65535")
+    web_origin = f"http://127.0.0.1:{web_port}"
     password = os.environ["E2E_PASSWORD"]
     owner = create_engine(urls[1].get_secret_value(), hide_parameters=True)
     with owner.begin() as connection:
@@ -61,10 +66,12 @@ def main():
             "auth_registration_attempts": 100,
             "auth_login_ip_attempts": 1000,
             "auth_refresh_attempts": 1000,
+            "cors_allowed_origins": [web_origin],
+            "auth_allowed_origins": [web_origin],
         }
     )
     uvicorn.run(
-        create_app(settings), host="127.0.0.1", port=8000, proxy_headers=False, access_log=False
+        create_app(settings), host="127.0.0.1", port=api_port, proxy_headers=False, access_log=False
     )
 
 

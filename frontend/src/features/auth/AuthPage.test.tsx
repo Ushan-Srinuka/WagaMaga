@@ -22,6 +22,10 @@ function show(register = false) {
           <Route path="/register" element={<AuthPage register />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/account" element={<p>Account opened</p>} />
+          <Route
+            path="/admin/overview"
+            element={<p>Admin overview opened</p>}
+          />
         </Routes>
       </MemoryRouter>
     </SessionContext.Provider>,
@@ -178,4 +182,32 @@ describe('account entry forms', () => {
     expect(await screen.findByText('Landing page opened')).toBeInTheDocument()
     await waitFor(() => expect(setUser).toHaveBeenCalled())
   })
+  it.each(['administrator', 'advisor'] as const)(
+    'sends %s accounts to their workspace without private farm queries',
+    async (role) => {
+      vi.mocked(signIn).mockResolvedValueOnce({
+        access_token: 'synthetic',
+        expires_in: 900,
+        user: {
+          id: 'other-role',
+          email: 'farmer@example.com',
+          display_name: 'Synthetic account',
+          role,
+          disabled_at: null,
+          deleted_at: null,
+          version: 1,
+          created_at: '2026-11-19T00:00:00Z',
+        },
+      })
+      show()
+      fill()
+      fireEvent.click(screen.getByRole('button', { name: /Sign in/ }))
+      expect(
+        await screen.findByText(
+          role === 'administrator' ? 'Admin overview opened' : 'Account opened',
+        ),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Landing page opened')).not.toBeInTheDocument()
+    },
+  )
 })

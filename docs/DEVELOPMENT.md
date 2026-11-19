@@ -1,6 +1,6 @@
 # Development guide
 
-Status: M0 complete and UM1 account, audit-history and notification screens/APIs implemented locally through 18 November 2026. React account/admin screens, FastAPI identity routes, revocable sessions, migrations through `0004_in_app_notifications` and tests are present. Farming/AI features remain unimplemented. M0 remote CI evidence is historical; expanded UM1 CI is configured, with actual local outcomes in TESTING.md.
+Status: M0, UM1 accounts and Farm Records FR-B persistence/FR-C APIs/FR-D screens are implemented locally through 19 November 2026. Current schema is `0007_support`, adding website support after farm restore/workspace deletion without a new dependency. AI and remote CI remain pending. TESTING.md owns actual local outcomes.
 
 ## Local setup: foundation and user management
 
@@ -76,6 +76,43 @@ API/worker use the restricted `wagamaga_app` role; Alembic uses separate bootstr
 Docker initialization creates separate `wagamaga` and `wagamaga_test` databases on a new named volume. Integration tests refuse names without the `_test` suffix. Editing `.env` passwords after initialization does not rotate existing database roles. Preserve the volume and do not use volume deletion as a routine fix. The `postgres_data` volume is mounted at `/var/lib/postgresql`, matching the PostgreSQL 18 image layout.
 
 The image is digest-pinned for Linux/amd64 in compose.yaml. Windows on this machine and the configured Ubuntu CI runner use that architecture. An ARM setup needs its own reviewed image digest. Keep the existing Windows support limitation in the historical audit below in view before a deployed or supported operating environment is claimed.
+
+## Farm Records persistence checkpoint
+
+Run the existing `alembic upgrade head` setup command before API/worker startup; readiness expects `0007_support`. The local development and dedicated test databases were upgraded for FR-B. This migration adds the farm tables/reference crop without modifying existing account/notification rows. It creates no farmer records or demo accounts in development. Do not downgrade a database containing farm history to remove the feature; downgrade/rebuild checks run only against disposable `_test` data.
+
+The explicit synthetic farm fixture lives in backend/tests/conftest.py and runs only through tests using guarded test URLs. Follow [TESTING.md](TESTING.md) to verify migrations, grants, constraints and service/API transactions. `alembic check` includes farm model metadata. There is no farm seed CLI; the connected FR-D interface is described below.
+
+FR-C follow-up: start the API with the existing command and explore the Farm Records tag in Swagger using a synthetic farmer login/access token. Use its HTTP Bearer authorization and exact Origin plus `X-WagaMaga-Client: web` on JSON writes as described in API.md. Administrators/advisors cannot use private farm endpoints. PostgreSQL provides timezone validation/local dates; no provider configuration is needed.
+
+FR-D use: start PostgreSQL/API/frontend with the existing setup above, register/sign in as a synthetic farmer and choose My Farms, or open `http://127.0.0.1:5173/farms`. Add a farm, then cultivation and observations; edit, confirm a stage, inspect history or archive through the connected controls. Administrators/advisors have no farm navigation and a direct URL is denied. Existing accounts/records are preserved and no demo farms are seeded in development. Browser fixture tests use a separate guarded `_test` database and generated credentials; run them separately from backend migration/reset tests. Exact checks and local Windows cleanup requirements are in TESTING.md.
+
+## Farmer onboarding and location entry - 19 November 2026
+
+Farm lifecycle follow-up: run `.\scripts\uv.ps1 run alembic upgrade head` before starting API/worker; readiness expects `0007_support`. Existing farm records/history are preserved. In My Farms choose Farm status → Archived, open a farm and choose Restore farm or Delete farm. Restore returns it to active use while independently archived crops remain archived. Delete requires the current farm name and removes access from the workspace; stored historical data is retained and the UI cannot undo deletion. This is not a data-erasure tool. Migration downgrade refuses while lifecycle evidence exists. Test rebuilds must remain on disposable `_test` databases.
+
+Farmer sign-in now returns to `http://127.0.0.1:5173/`. The website header has My Farms and Add Farm, while the hero action bar offers Add my farm for a new farmer or a private farm selector and next crop/observation action for returning farmers. Choose your own farm name, district and village/town, then add a crop/planting date/area and an observation. There is no separate farmer dashboard or fixed mobile bottom navigation. Advisors sign in to My Account and administrators to Admin Overview and cannot access private farmer records. A farmer visiting the old `/dashboard` URL is redirected home.
+
+Choose Describe the location myself for an existing/custom location. District selection has no default and is not a guidance-eligibility check; the existing API stores a label, not structured administrative fields. Exact coordinates and additional area/timezone are collapsed options. Use my current location only at the farm, approve browser permission if desired, review the result and save normally. Permission denial, missing location support and timeouts do not prevent manual entry or omission. Browser geolocation requires a secure context: loopback development works in supported browsers, while deployed use requires HTTPS. There is no new API key or map provider. The initial guidance pilot remains chilli/Anuradhapura pending agricultural validation.
+
+If the usual app ports are occupied, leave those services running and use isolated test ports in a separate terminal:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+npm.cmd --prefix frontend run test:e2e
+```
+
+The harness still refuses non-`_test` databases, creates synthetic accounts, binds to loopback and permits its selected web origin only. Do not run database migration/reset tests concurrently. Port defaults remain 8000/5173; remove these environment overrides before ordinary dev commands in that terminal. Existing app processes and the previously running Compose database are left alone.
+
+## Help and support - 19 November 2026
+
+Admin Overview follow-up (D30): administrator login now opens `http://127.0.0.1:5173/admin/overview`, showing account/farm/cultivation/support count summaries. Farmers still open the website landing page and advisors My Account. Admin account navigation and the signed-in website header link to Overview. Open a current farmer in User management to see the count-only Farm record summary; no farm names/locations/notes are exposed. Existing farm endpoints still reject administrators. Report views are recorded in account audit history; audit failure prevents a successful report. No additional configuration or migration is needed after `0007_support`. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md) for definitions and [TESTING.md](TESTING.md) for evidence.
+
+Run the normal migration command before API/worker startup; current head is `0007_support`. Open `http://127.0.0.1:5173/help` for public FAQs and contact. Signed-in farmers use `/support` or `/support/new`; administrators use `/admin/support`. Submitting shares only the typed support conversation, not private farm records. In-progress/resolved states and generic in-app notifications work without an email provider. Account recovery, attachments, live chat and Admin Overview remain pending.
+
+To provide a public contact for farmers who cannot sign in, set `SUPPORT_CONTACT_EMAIL` to a monitored operator email in the ignored root `.env` and restart the API. The optional field defaults to unset, is validated by existing email-validator and exposed publicly by `/api/v1/help/contact`; it is not a secret or SMTP setting. Do not use an invented/unmonitored address. The Help page honestly reports when contact is not configured. Setting it sends no email and does not implement password recovery or bypass identity checks. A real contact/recovery policy is still needed before external users are invited. See [SUPPORT.md](SUPPORT.md) for the scope and [TESTING.md](TESTING.md) for exact verified commands.
 
 ## Intended project layout
 

@@ -1,6 +1,6 @@
 # Documentation index
 
-Status: M0 complete and UM1 user management implemented locally, 16 November 2026. TESTING.md distinguishes M0 remote CI from current local account/browser results and pending UM1 remote CI. DEVELOPMENT.md covers startup and controlled administrator setup. Farming/AI features remain unimplemented. The earlier PDF is a dated snapshot, not a live mirror.
+Status: M0, UM1 accounts and Farm Records FR-B persistence/FR-C APIs/FR-D connected screens are implemented locally, with farm lifecycle and Help/support follow-ups through 19 November 2026. TESTING.md distinguishes M0 remote CI from current local backend/component/browser results and pending expanded CI. DEVELOPMENT.md covers startup and controlled administrator setup. AI remains unimplemented. The earlier PDF is a dated snapshot, not a live mirror.
 
 Start with [How to explain WagaMaga AI in simple English](PROJECT_EXPLAINED.md) for presentation answers, technology choices, Markdown documentation, architecture, testing and an honest account of current progress.
 
@@ -16,6 +16,9 @@ That presentation guide predates the UM1 implementation. Use the current status 
 | [UI design](UI_DESIGN.md) | Shared editorial foundations, creamy green palette/typography across existing screens, interaction states and accessibility |
 | [API guide](API.md) | Route conventions, identity, errors, jobs, versioning and Swagger use |
 | [Database guide](DATABASE.md) | Entity groups, integrity, migrations, indexes and isolation |
+| [Farm Records specification](FARM_RECORDS.md) | FR-A requirements, FR-B persistence, FR-C APIs, FR-D screens and delivery limits |
+| [Help and support](SUPPORT.md) | Public Help, farmer-submitted requests, scoped admin inbox, generic notifications and privacy limits |
+| [Admin reporting](ADMIN_REPORTING.md) | Count-only overview/farmer summaries, population definitions, audited access and private-data limits |
 
 ## Building and verifying
 

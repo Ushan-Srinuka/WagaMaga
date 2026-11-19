@@ -1,4 +1,4 @@
-"""Application factory with health and the bounded UM1 account module."""
+"""Application factory with health, accounts, private Farm Records and website support."""
 
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -11,9 +11,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 from app.db.database import Database
+from app.modules.farms.routes import router as farms_router
 from app.modules.identity.routes import router as identity_router
 from app.modules.identity.security import COOKIE_NAME, COOKIE_PATH, IdentityError
 from app.modules.notifications.routes import router as notifications_router
+from app.modules.reporting.routes import router as reporting_router
+from app.modules.support.routes import router as support_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -29,8 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="WagaMaga AI API",
         version="0.1.0",
         description=(
-            "Accounts, administrative audit history, in-app notifications and M0 health. "
-            "Farm, advisory and planning features are not implemented."
+            "Accounts, audit, notifications, owner-only Farm Records, website support and health. "
+            "Advisory and planning features are not implemented."
         ),
         docs_url="/docs" if settings.app_env != "production" else None,
         redoc_url="/redoc" if settings.app_env != "production" else None,
@@ -68,7 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             size = request.headers.get("content-length", "0")
             if not size.isdigit() or int(size) > 16384:
                 return error_response(
-                    request, 413, "REQUEST_TOO_LARGE", "The account request is too large."
+                    request, 413, "REQUEST_TOO_LARGE", "The request is too large."
                 )
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
@@ -104,11 +107,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(SQLAlchemyError)
     async def unavailable(request: Request, error: SQLAlchemyError):
         return error_response(
-            request, 503, "DATABASE_UNAVAILABLE", "Account access is temporarily unavailable."
+            request, 503, "DATABASE_UNAVAILABLE", "Data access is temporarily unavailable."
         )
 
     application.include_router(identity_router)
     application.include_router(notifications_router)
+    application.include_router(farms_router)
+    application.include_router(support_router)
+    application.include_router(reporting_router)
 
     @application.get("/health/live", tags=["Health"])
     def liveness() -> dict[str, str]:

@@ -775,7 +775,11 @@ def test_concurrent_registration_and_first_admin_bootstrap(accounts):
     with accounts[2].begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE notifications, audit_logs, refresh_tokens, refresh_sessions, "
+                "TRUNCATE support_events, support_messages, support_tickets, "
+                "farm_deletions, farm_audit_events, observation_revisions, "
+                "cultivation_revisions, "
+                "farm_revisions, farm_observations, cultivations, farms, "
+                "notifications, audit_logs, refresh_tokens, refresh_sessions, "
                 "auth_rate_limits, users"
             )
         )
@@ -864,10 +868,7 @@ def test_migration_fresh_rebuild_and_metadata_privileges(identity_engines):
         command.downgrade(config, "base")
         command.upgrade(config, "head")
     with app_engine.connect() as connection:
-        assert (
-            connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0004_in_app_notifications"
-        )
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007_support"
         assert connection.scalar(text("SELECT count(*) FROM users")) == 0
         assert connection.scalar(
             text("SELECT has_table_privilege(current_user, 'audit_logs', 'INSERT')")

@@ -73,3 +73,21 @@ it('preserves the in-memory session if logout could not reach the server', async
     'Bearer active-token',
   )
 })
+
+it('does not refresh or replay a farm mutation after a 401', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(response({ access_token: 'synthetic', user }))
+    .mockResolvedValueOnce(response({ message: 'Expired' }, 401))
+  vi.stubGlobal('fetch', fetch)
+  const api = await import('./accounts')
+  await api.signIn('farmer@example.com', 'synthetic password')
+  await expect(
+    api.request(
+      '/farms',
+      { method: 'POST', body: '{}' },
+      { retryUnauthorized: false },
+    ),
+  ).rejects.toMatchObject({ status: 401 })
+  expect(fetch).toHaveBeenCalledTimes(2)
+})

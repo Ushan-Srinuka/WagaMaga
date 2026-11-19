@@ -148,6 +148,7 @@ AuditAction = Literal[
     "account_deleted",
     "password_changed",
     "audit_viewed",
+    "report_viewed",
 ]
 
 

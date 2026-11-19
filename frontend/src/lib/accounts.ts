@@ -108,12 +108,14 @@ export function restoreSession(): Promise<TokenResult> {
 export async function request<T>(
   path: string,
   init: RequestInit = {},
+  options: { retryUnauthorized?: boolean } = {},
 ): Promise<T> {
   try {
     return await send<T>(path, init)
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401 || !token)
       throw error
+    if (options.retryUnauthorized === false) throw error
     await restoreSession()
     return send<T>(path, init)
   }

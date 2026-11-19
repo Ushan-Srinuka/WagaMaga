@@ -10,10 +10,31 @@ import HomePage from './features/home/HomePage'
 import NotificationsPage from './features/notifications/NotificationsPage'
 import UserDetailPage from './features/users/UserDetailPage'
 import UsersPage from './features/users/UsersPage'
+import FarmsPage, {
+  FarmDetailPage,
+  NewCultivationPage,
+  NewFarmPage,
+} from './features/farms/FarmPages'
+import CultivationPage from './features/farms/CultivationPage'
+import HistoryPage from './features/farms/HistoryPage'
+import HelpPage from './features/support/HelpPage'
+import OverviewPage from './features/reporting/OverviewPage'
+import {
+  NewSupportPage,
+  SupportDetailPage,
+  SupportListPage,
+} from './features/support/SupportPages'
 import './App.css'
 import './user-management.css'
+import './features/farms/farms.css'
 
-function Protected({ admin = false }: { admin?: boolean }) {
+function Protected({
+  admin = false,
+  farmer = false,
+}: {
+  admin?: boolean
+  farmer?: boolean
+}) {
   const { user, phase, restore } = useSession()
   if (phase === 'loading')
     return (
@@ -45,6 +66,13 @@ function Protected({ admin = false }: { admin?: boolean }) {
         <p>Administrator access is required to manage other accounts.</p>
       </section>
     )
+  if (farmer && user.role !== 'farmer')
+    return (
+      <section className="panel">
+        <h1>Access denied</h1>
+        <p>Farmer access is required for private farm records.</p>
+      </section>
+    )
   return <Outlet />
 }
 
@@ -57,7 +85,39 @@ function ProductRoutes() {
         <Route element={<AccountShell />}>
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route element={<Protected farmer />}>
+            <Route path="/support" element={<SupportListPage />} />
+            <Route path="/support/new" element={<NewSupportPage />} />
+            <Route path="/support/:ticketId" element={<SupportDetailPage />} />
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
+            <Route path="/farms" element={<FarmsPage />} />
+            <Route path="/farms/new" element={<NewFarmPage />} />
+            <Route path="/farms/:farmId" element={<FarmDetailPage />} />
+            <Route path="/farms/:farmId/history" element={<HistoryPage />} />
+            <Route
+              path="/farms/:farmId/cultivations/new"
+              element={<NewCultivationPage />}
+            />
+            <Route
+              path="/farms/:farmId/cultivations/:cultivationId"
+              element={<CultivationPage />}
+            />
+            <Route
+              path="/farms/:farmId/cultivations/:cultivationId/history"
+              element={<HistoryPage />}
+            />
+            <Route
+              path="/farms/:farmId/cultivations/:cultivationId/observations/:observationId/history"
+              element={<HistoryPage />}
+            />
+          </Route>
           <Route element={<Protected admin />}>
+            <Route path="/admin/overview" element={<OverviewPage />} />
+            <Route path="/admin/support" element={<SupportListPage admin />} />
+            <Route
+              path="/admin/support/:ticketId"
+              element={<SupportDetailPage admin />}
+            />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/users/:id" element={<UserDetailPage />} />
             <Route path="/admin/audit" element={<AuditPage />} />
@@ -81,6 +141,14 @@ export default function App() {
         }
       />
       <Route path="/connection" element={<FoundationPage />} />
+      <Route
+        path="/help"
+        element={
+          <SessionProvider>
+            <HelpPage />
+          </SessionProvider>
+        }
+      />
       <Route
         path="*"
         element={

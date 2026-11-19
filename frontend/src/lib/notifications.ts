@@ -1,6 +1,10 @@
 export type Notification = {
   id: string
-  event_type: 'role_changed' | 'account_reenabled' | 'password_changed'
+  event_type:
+    | 'role_changed'
+    | 'account_reenabled'
+    | 'password_changed'
+    | 'support_updated'
   title: string
   body: string
   created_at: string

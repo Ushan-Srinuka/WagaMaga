@@ -4,6 +4,7 @@ import { useSession } from '../../app/session-context'
 import Brand from '../../components/Brand'
 import { request } from '../../lib/accounts'
 import type { NotificationPage } from '../../lib/notifications'
+import FarmActionBar, { FirstFarm } from './FarmActionBar'
 import './home.css'
 
 const fieldImage = '/images/chilli-field-hero-v1.webp'
@@ -122,9 +123,26 @@ export default function HomePage() {
           <Brand />
         </Link>
         <nav className="home-section-nav" aria-label="Main navigation">
+          {user?.role === 'administrator' && (
+            <Link to="/admin/overview">Administration</Link>
+          )}
+          {user?.role === 'farmer' ? (
+            <>
+              <Link className="home-nav-current" to="/farms">
+                <HomeIcon name="leaf" /> My Farms
+              </Link>
+              <Link to="/farms/new">
+                <HomeIcon name="records" /> Add a farm
+              </Link>
+            </>
+          ) : !user ? (
+            <a className="home-nav-current" href="#farm-start">
+              <HomeIcon name="leaf" /> Farm records
+            </a>
+          ) : null}
           <a href="#our-vision">Our vision</a>
-          <a href="#planned-features">Planned features</a>
-          <a href="#how-it-works">How it will work</a>
+          <a href="#how-it-works">How it works</a>
+          <Link to="/help">Help</Link>
         </nav>
         <div className="home-header-access">
           {phase === 'loading' ? (
@@ -153,9 +171,19 @@ export default function HomePage() {
                   </span>
                 )}
               </Link>
-              <Link className="home-button home-button-dark" to="/account">
-                My account
+              <Link
+                className="home-login home-account-link"
+                to="/account"
+                aria-label="My account"
+              >
+                <HomeIcon name="control" />
+                <span>My account</span>
               </Link>
+              {user.role === 'farmer' && (
+                <Link className="home-button home-button-dark" to="/farms/new">
+                  Add farm <span aria-hidden="true">＋</span>
+                </Link>
+              )}
             </>
           ) : phase === 'offline' ? (
             <>
@@ -198,30 +226,48 @@ export default function HomePage() {
               <HomeIcon name="leaf" /> Built for Sri Lankan growers
             </p>
             <h1 id="home-title">
-              Grow with knowledge.
+              Your farm.
               <br />
-              Plan with confidence.
+              All in one place.
             </h1>
             <p className="home-intro">
-              A clearer path from agricultural guidance to informed cultivation
-              decisions. We’re building a companion for local chilli farmers,
-              with visible sources, useful context and structured farm records.
+              Your fields, your crops, your everyday observations. Start with
+              your farm and keep the details together, wherever you grow.
             </p>
-            <div className="home-actions">
-              <Link
-                className="home-button"
-                to={user ? '/account' : '/register'}
-              >
-                {user ? 'My account' : 'Create account'}{' '}
-                <span aria-hidden="true">↗</span>
-              </Link>
-              <a className="home-button home-button-glass" href="#our-vision">
-                Explore our vision <span aria-hidden="true">↓</span>
-              </a>
-            </div>
+            {user?.role === 'farmer' ? (
+              <FarmActionBar key={user.id} />
+            ) : !user && phase === 'ready' ? (
+              <div className="home-farm-start" id="farm-start">
+                <p className="home-launcher-caption">
+                  A little less paperwork. A little more growing.
+                </p>
+                <FirstFarm />
+                <p className="home-launcher-links">
+                  Already have an account?{' '}
+                  <Link to="/login">
+                    Log in to your farms <span aria-hidden="true">↗</span>
+                  </Link>
+                </p>
+              </div>
+            ) : !user ? (
+              <div id="farm-start" className="home-farm-start">
+                <p role="status">
+                  {phase === 'loading'
+                    ? 'Checking your account…'
+                    : 'Account status is unavailable. Use Retry in the header to reconnect.'}
+                </p>
+              </div>
+            ) : (
+              <div className="home-actions">
+                <Link className="home-button" to="/account">
+                  Open my account <span aria-hidden="true">↗</span>
+                </Link>
+              </div>
+            )}
             <p className="home-availability">
-              <span className="home-status-dot" /> Accounts are available.
-              Farming and AI tools are coming later.
+              <span className="home-status-dot" /> Accounts and private farm
+              records are available. Chilli first; guidance for Anuradhapura is
+              planned and subject to review.
             </p>
             <ul className="home-hero-notes" aria-label="Product direction">
               <li>
@@ -255,8 +301,8 @@ export default function HomePage() {
               </p>
             </div>
             <p className="home-development-note">
-              <span className="home-status-dot" /> Three capabilities on the
-              roadmap
+              <span className="home-status-dot" /> Farm records available;
+              guidance and planning next
             </p>
           </div>
           <div className="home-feature-grid" id="planned-features">
@@ -265,12 +311,12 @@ export default function HomePage() {
                 <span className="home-icon-tile">
                   <HomeIcon name="records" />
                 </span>
-                <span className="home-roadmap-label">Planned</span>
+                <span className="home-roadmap-label">Available</span>
               </div>
               <h3>Farm records</h3>
               <p>
-                Keep cultivation details and observations together. Build a
-                useful picture of your crop, from planting to harvest.
+                Keep private farm and cultivation records, add observations and
+                review earlier versions when you edit or archive.
               </p>
               <div
                 className="home-preview"
@@ -458,8 +504,21 @@ export default function HomePage() {
               <br />
               as we build the farming tools ahead.
             </p>
-            <Link className="home-button" to={user ? '/account' : '/register'}>
-              {user ? 'Go to my account' : 'Create account'}{' '}
+            <Link
+              className="home-button"
+              to={
+                user?.role === 'farmer'
+                  ? '/farms'
+                  : user
+                    ? '/account'
+                    : '/register'
+              }
+            >
+              {user?.role === 'farmer'
+                ? 'Open my farms'
+                : user
+                  ? 'Go to my account'
+                  : 'Create account'}{' '}
               <span aria-hidden="true">↗</span>
             </Link>
             <p className="home-start-note">
@@ -467,12 +526,33 @@ export default function HomePage() {
             </p>
           </div>
         </section>
+        <section
+          className="home-help home-container"
+          aria-labelledby="home-help-title"
+        >
+          <div>
+            <p className="home-eyebrow">A little help, when you need it</p>
+            <h2 id="home-help-title">Need a hand with your farm records?</h2>
+            <p>Find simple guides or contact us when you need help.</p>
+          </div>
+          <div className="home-help-actions">
+            <Link className="home-button home-button-dark" to="/help">
+              Visit Help Centre
+            </Link>
+            <Link
+              className="home-button"
+              to={user?.role === 'farmer' ? '/support/new' : '/help#sign-in'}
+            >
+              Contact Support
+            </Link>
+          </div>
+        </section>
       </main>
 
       <footer className="home-footer">
         <p className="home-footer-banner">
-          <span className="home-status-dot" /> Farming and AI features are under
-          development.
+          <span className="home-status-dot" /> Private farm records are
+          available. AI guidance and planning are under development.
         </p>
         <div className="home-container">
           <div className="home-footer-main">
@@ -490,6 +570,7 @@ export default function HomePage() {
             </div>
             <nav aria-label="Platform navigation">
               <h3>Explore WagaMaga</h3>
+              <Link to="/help">Help and support</Link>
               <a href="#our-vision">Our vision</a>
               <a href="#planned-features">Planned features</a>
               <a href="#how-it-works">How it will work</a>
@@ -499,6 +580,9 @@ export default function HomePage() {
               <h3>Your account</h3>
               {user ? (
                 <>
+                  {user.role === 'farmer' && (
+                    <Link to="/farms">Farm records</Link>
+                  )}
                   <Link to="/account">My account</Link>
                   <Link to="/notifications">Notifications</Link>
                 </>

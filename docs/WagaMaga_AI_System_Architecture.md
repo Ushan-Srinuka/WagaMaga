@@ -36,7 +36,7 @@ Arrows show the primary request and dependency path, not unrestricted connectivi
 
 | Component | Responsibility |
 | --- | --- |
-| React client | Role based navigation, forms, farm dashboard, conversation, citations, calendar and current versus proposed task comparison. Poll persisted job and notification status initially. |
+| React client | Role based navigation, forms, landing-page farm entry and records; planned conversation, citations, calendar and current versus proposed task comparison. Poll persisted job and notification status initially. |
 | FastAPI routes | Authenticate, validate DTOs, enforce ownership and assignment, invoke services and return consistent errors. Publish OpenAPI under a suitable access policy. |
 | Domain services | Identity; Farms; Knowledge; Advisory; Proposals; Reviews; Tasks; Weather; Notifications. Domain services own business transitions and do not trust model permissions. |
 | Retrieval service | Filter eligible evidence, run lexical and vector searches, fuse ranks and return bounded source objects. No write capability. |
@@ -45,6 +45,10 @@ Arrows show the primary request and dependency path, not unrestricted connectivi
 | Worker and scheduler | Claim durable jobs, ingest documents, fetch weather, prepare proposals and generate notifications with bounded retries. |
 
 ### Identity and privacy boundary
+
+D30 explicitly adds count-only administrator reporting through a separate service, not a bypass on farm APIs. One SQL statement snapshot computes allowlisted aggregate/per-farmer metadata; live admin/session checks and minimal account-audit evidence gate successful responses. No private record fields or farm IDs are returned, and no schema/provider/worker change is introduced. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md).
+
+Website support (D29) adds a modular domain with tickets and append-only messages/events on `0007_support`. Farmers explicitly submit text for administrators to handle; this is separate from private farm records, AI chats and assigned agricultural cases. Services filter own requests or require current administrator access, version/lock writes and atomically persist generic in-app notices. No farm context is attached and no recovery/provider/worker capability is added. Public contact reads only validated configuration and needs no database. [SUPPORT.md](SUPPORT.md) defines the bounded contracts.
 
 Use JWT access tokens with validated signature, issuer, audience and expiry. Store access tokens in browser memory and use rotated refresh sessions in Secure HttpOnly cookies. Configure SameSite and CSRF or origin protections for cookie authenticated endpoints; validate deployment origins explicitly. Store refresh token hashes and revoke sessions on logout or account disablement.
 
@@ -135,6 +139,16 @@ The execution key is unique per proposal version and operation. Concurrent attem
 Advisor clearance and farmer acceptance reference the same immutable action hash. Revision supersedes the old proposal version and requires fresh decisions. Weather freshness is rechecked from stored snapshots; if a fresh fetch is required, obtain it before the transaction and then validate its timestamp. A pending or stale proposal cannot execute merely because it once had approval.
 
 ## 6 Logical data model for business records
+
+Farm lifecycle follow-up (D28), 19 November 2026: `0006_farm_lifecycle` adds an append-only `farm_deletions` marker and restore/delete audit operations. Restore changes only the farm archive timestamp; separately archived children stay archived. Workspace deletion atomically appends the marker plus version/revision/audit and denies all subsequent farm/child/history access. It preserves existing record snapshots and does not grant physical DELETE or settle real-user erasure policy. All service lookups must exclude marked farms; administrator status still grants no private access.
+
+Farmer UX follow-up, 19 November 2026: the signed-in farmer landing-page hero composes existing owner-filtered reads; there is no separate dashboard implementation. A local district/village helper formats the existing location label; browser geolocation is explicit, draft-only until save and independent of district/region applicability. No provider adapter, deployable unit, API endpoint, district column or schema migration is added. D27 and UI_DESIGN.md describe the entry/location decisions; the planned planner/chat and validated guidance boundaries are unchanged.
+
+The [Farm Records slice](FARM_RECORDS.md), documented in D26 on 18 November 2026, refines the farm fields, owner-only query boundary, archive semantics and migration sequence below. FR-B implements its model/history through `0005_farm_records`; FR-C implements owner-scoped services/APIs and FR-D supplies their connected screens. The existing UM1 audit_logs table is account-scoped (target_id references users); do not reuse its administrator feed to expose private farm history. Keep proposal/AI/worker breadth outside the manual records slice and preserve the release gates in ROADMAP.md.
+
+FR-C now implements the manual record services/API on that unchanged schema, with typed DTOs, live active-farmer/session checks, owner/parent-filtered reads, optimistic archives/edits and atomic private revisions/audit. Actor-user/session/farm/cultivation/observation locks serialize writes against revocation and parent archives. The caller owns the transaction; HTTP dependencies commit before success. Timezone lookup/local-date conversion uses PostgreSQL, while crop catalogue mutation remains operator-only. Case sharing, proposals, AI and remote CI remain pending.
+
+FR-D now supplies the connected React record screens on the same API/schema and shared theme/session client. It preserves decimal strings and explicit device/farm timezone handling, renders history as plain labelled text, resets private views when account/route context changes and provides controlled conflict/uncertain-save states without automatic mutation replay. Client role gates do not replace service ownership. Case sharing, proposals, AI and remote CI remain pending; no new deployable unit or worker operation is introduced.
 
 Use UUID primary keys, explicit foreign keys and UTC created_at and updated_at timestamps. Date only task scheduling retains the farm timezone; timestamped reminders are derived explicitly. This is a logical schema, not a final migration script.
 

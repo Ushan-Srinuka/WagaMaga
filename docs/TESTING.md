@@ -2,6 +2,259 @@
 
 Status: M0 complete and UM1 account, audit-history, in-app notification and homepage session-navigation work verified locally. On 18 November 2026, account/audit changes passed 62 backend tests, 29 frontend tests and all 6 desktop/mobile browser journeys; migration/drift, lint, format and build checks passed. The subsequent homepage/login-navigation follow-up passed 30 frontend tests, lint, format and production build. Its browser rerun could not start because local port 8000 was already occupied; do not treat the earlier browser result as verification of the new redirect. Expanded CI has not run remotely for these local changes. Farming/AI release suites remain future work.
 
+Latest checkpoint, 19 November 2026: Help/support and Admin Overview pass 266 backend tests, 77 frontend tests and 24 desktop/mobile browser journeys on `0007_support`. Earlier records below describe their own historical scope; remote CI remains pending.
+
+## Audited administrator count reporting - 19 November 2026
+
+The user authorized Admin Overview after Help/support. D30 and [ADMIN_REPORTING.md](ADMIN_REPORTING.md) define the explicit permission for aggregate/per-farmer count metadata. Reports expose no private farm fields and do not change owner-only farm APIs. No schema, dependency or provider change is introduced.
+
+| Check | Actual local result |
+| --- | --- |
+| Backend regression | **266 passed** in 95.40 seconds with required PostgreSQL/pgvector and no skips. The 12 new reporting cases also passed independently in 6.61 seconds. |
+| Authorization and counts | Anonymous/farmer/advisor denial, independent service checks, revoked administrator lock wait, removed/non-farmer target hiding, disabled farmer inclusion, effective cultivation archive, workspace deletion exclusion, actual zero and bounded 30-day signup dates pass. DTO field allowlists exclude private fields. |
+| Snapshot and audit | Each report uses one PostgreSQL count statement/snapshot. Successful views append minimal account audit; four immediate/deferred audit failure cases return safe failure with no report success. No counts or private farm content enter audit. |
+| Frontend | **77 passed** across 12 files, including zero/error/retry states, target changes, non-admin route denial and clearing counts after session expiry. ESLint, Prettier and TypeScript/Vite production build pass. |
+| Real browsers | **24 passed** in 2.1 minutes with Edge desktop 1280×900 and mobile 360×900 against real FastAPI/PostgreSQL. Four new journeys verify admin login destination, real aggregate/per-farmer counts, audit entries, continued private-farm denial, farmer denial and administrator revocation. All 20 previous journeys remain green. |
+| Visual/static scope | Desktop/mobile overview and farmer count-summary captures are under ignored `frontend/test-results/` and reviewed locally. Ruff check/format pass for 64 Python files. No farmer usability research, AI evaluation, remote CI or deployment is implied. |
+| Final consistency | Development/test Alembic checks both report no new operations. Generated OpenAPI confirms two authenticated reporting GET operations and count-only DTO allowlists. All 130 local links/anchors in 19 changed/new guides and feature SRS identifiers pass validation; `git diff --check` passes. |
+
+Commands run from the repository root:
+
+```powershell
+$reportCache = Join-Path (Get-Location) '.tools/pytest-cache-reporting'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$reportCache" --tb=short -q
+.\scripts\uv.ps1 run ruff check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+npm.cmd --prefix frontend run test:e2e
+```
+
+Browser tests use synthetic accounts and guarded PostgreSQL `_test` storage. Existing user servers/database are preserved. Public support email remains optional and unconfigured; a monitored contact/recovery policy and reporting/privacy notices are required before real-user use. Final review/publication and remote CI remain the next delivery work, followed by separately scoped curated-source preparation. M1/V0, task execution and AI are not complete.
+
+## Public Help and scoped website support - 19 November 2026
+
+The user authorized public Help, farmer-submitted requests and an admin inbox. `0007_support` adds tickets, immutable messages/events and generic `support_updated` notices without a provider/dependency change. Submitted text is shared with administrators; no farm or AI-chat context is attached, and support access grants no farming or recovery permission. Admin Overview/reporting remains separate. [SUPPORT.md](SUPPORT.md) and D29 define acceptance rules and limits.
+
+| Check | Actual local result |
+| --- | --- |
+| Backend regression | Final **254 passed** in 87.61 seconds with required PostgreSQL/pgvector and no skips. Includes the previous 213, 34 new support integration cases and 7 contact-configuration cases. An earlier full checkpoint passed 247 before the additional configuration cases. |
+| Role/ownership | Farmer-only creation/own lists/details/messages/status; admin-only submitted inbox/replies/status; absent auth/advisors/wrong roles denied before target access. Another owner's/missing ticket is uniformly hidden. Service-level checks cannot be bypassed by omitting HTTP dependencies. Support permission still denies private farm access; support bodies stay out of account audit. |
+| State/evidence | Open/In progress/Resolved, resolve/reopen, resolved-reply denial, stale/no-op status, two-admin conversation, literal messages, strict owner/role/farm-field rejection and bounded list/message projections pass. Generic recipient notices contain no subject/reply text. |
+| Failures/concurrency | Eight immediate/deferred ticket/message/event/notification failure cases roll back version/message/event/notice before success. Failed creation leaves no empty ticket. Concurrent replies have one winner/event/notice. A reply waiting behind requester disablement is rejected; unavailable users receive no replies/notices, while admins can resolve their tickets. |
+| Storage/contact | App message/event rewrites and ticket DELETE/TRUNCATE denied; identity/subject reassignment rejected; evidence blocks downgrade. Public contact works without auth/database, optional contact is honestly unset, and invalid/URI/header-injection/non-string addresses fail validation without delivery lookup. |
+| Frontend | **72 passed** across 11 files: previous 64 plus 8 support cases for payload allowlist, no mutation replay, uncertain/stale drafts, status/draft coordination, literal rendering, admin route denial, late response/account-change privacy and public Help/contact fallback. ESLint and TypeScript/Vite production build pass. |
+| Real browsers | All **20 passed** in 2.1 minutes using Edge at 1280×900 and 360×900 with real FastAPI/PostgreSQL. Four new support journeys cover public Help/login, farmer submission, admin inbox/status/reply, recipient notification, follow-up, resolution/reopening/reload, foreign links, stale replies and revocation without replay. All 16 prior account/farm/landing/lifecycle journeys remain green. |
+| Visual scope | Synthetic Help, support request form, admin inbox and farmer/admin conversation captures are under ignored `frontend/test-results/`. Page/form width checks pass; desktop/mobile captures are reviewed locally. No farmer research, live staffing or agronomic review is implied. |
+
+Commands run from the repository root:
+
+```powershell
+$supportCache = Join-Path (Get-Location) '.tools/pytest-cache-support'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$supportCache" --tb=short -q
+.\scripts\uv.ps1 run ruff check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run alembic upgrade head
+.\scripts\uv.ps1 run alembic check
+.\scripts\uv.ps1 run alembic -x db=test check
+.\scripts\uv.ps1 run alembic current
+.\scripts\uv.ps1 run python -m app.worker --once
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+npm.cmd --prefix frontend run test:e2e
+npm.cmd --prefix frontend run test:e2e -- support.spec.ts
+```
+
+The final focused support browser run captures the additional page/form/inbox layouts. Development was upgraded additively to 0007, preserving existing records without seeding support tickets. Migration/reset tests ran before browser tests; existing user services and Compose database are preserved. The optional public contact email is not invented or configured on the user's behalf; a monitored address/recovery policy remains an external-user gate. No email delivery, attachments, live chat, advisor cases, Admin Overview, external deployment, remote CI or real-user/provider evaluation is claimed. Earlier records below are historical checkpoints.
+
+## Farm restore and workspace deletion - 19 November 2026
+
+The user requested restore/delete options for archived farms. Migration `0006_farm_lifecycle` adds an append-only farm deletion marker and restore/delete audit operations, preserving existing snapshots/records. Owner-only restore clears only the farm archive. Workspace deletion requires archive, current version and farm-name confirmation; it retains storage evidence and excludes every farm/child/history/write/restore lookup. No physical erasure, cultivation restore/deletion or deleted-record browser is introduced. D28 and FARM_RECORDS.md define the semantics.
+
+| Check | Actual local result |
+| --- | --- |
+| Full backend regression | **213 passed** in 102.38 seconds, with required PostgreSQL/pgvector and no skips. Includes the previous 191 cases plus 22 lifecycle/marker cases. The targeted farm suite first passed 151 tests. |
+| Access/state | Existing all-route permission, foreign/missing-ID and session tests now include both new commands. Restore reopens inherited child archives while independently archived crops stay archived. Active restore is a current-version no-op; stale restore conflicts. Active-farm deletion, wrong/stale confirmation, missing/oversized/extra fields fail without effects. Deleted farms disappear from all statuses/counts, and all nested operations return generic 404 while another owner's records remain available. |
+| Atomicity/concurrency | Ten immediate/deferred revision/audit/marker failure cases return safe 503 and roll back farm version, evidence and marker before success. Real lock waits verify restore→delete, delete→restore and duplicate delete have only one effect. |
+| Persistence/migrations | Marker UPDATE/DELETE/TRUNCATE denied to the app; duplicate markers rejected. Upgrade from 0005 preserves farm snapshots. Downgrade refuses when lifecycle evidence exists. Existing base rebuild/rollback/grant tests remain green. Development upgraded to 0006 without seeding or deleting farms; development and `_test` Alembic checks report no new operations, and worker `--once` reports database ready. |
+| Frontend/static | All **64 frontend tests** pass. Ruff check/format (52 Python files), ESLint, Prettier and TypeScript/Vite production build pass. No dependency/lockfile changes. |
+| Browser regression | All **16 passed** in 2.2 minutes on Edge desktop 1280×900 and mobile 360×900, actual FastAPI/PostgreSQL with synthetic accounts. New journeys find Archived farms, restore with Escape/focus handling, re-archive, require typed name, cancel without effect, delete and verify farm/child links and home selector are inaccessible. Existing account, landing, conflicts, history, owner isolation and revocation cases remain green. |
+| Visual evidence | Desktop/mobile delete confirmation screenshots inspected under ignored `frontend/test-results/`; dialog content, typed confirmation and controls fit the tested viewports. No farmer usability study or production-readiness claim is made. |
+
+Commands run from the repository root:
+
+```powershell
+$farmCache = Join-Path (Get-Location) '.tools/pytest-cache-lifecycle'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$farmCache" --tb=short -q
+.\scripts\uv.ps1 run ruff check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run alembic upgrade head
+.\scripts\uv.ps1 run alembic check
+.\scripts\uv.ps1 run alembic -x db=test check
+.\scripts\uv.ps1 run alembic current
+.\scripts\uv.ps1 run python -m app.worker --once
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+npm.cmd --prefix frontend run test:e2e
+```
+
+An initial development drift check correctly reported that the old schema needed upgrading; after the authorized additive upgrade both databases match metadata. Backend migration/reset tests and browser tests ran sequentially. Existing user services and the already running Compose database were left running; browser test child processes closed after completion. No remote CI, deployment, real-user data erasure, provider/AI evaluation or retention policy validation was performed. Stored historical data survives workspace deletion and backups; this feature must not be described as permanent data erasure.
+
+## Landing-page farm entry correction - 19 November 2026
+
+The user clarified that the farm entry belongs in the landing-page header/hero, with a prominent website action bar. Farmer login now returns to `/`; other roles open My Account. My Farms/Add a farm sit in the website navigation, with an Add Farm header button. The hero provides Add my farm for a new farmer, Get started/login for visitors, or a private farm selector and crop/observation continuation for returning farmers. The separate dashboard implementation/checklist and fixed mobile bottom bar were removed. Its old farmer URL redirects home.
+
+Frontend component results: **64 passed**, 10 files. Existing record/location/account cases pass, with hero farm selection, saved-state continuation, list/nested-read failure, private late-response rejection after account switch, role-aware login, no private farmer queries for visitor/advisor/administrator and direct header/hero entry. New homepage notification mocks account for the additional farm reads; the actual API wrapper and owner enforcement remain unchanged.
+
+Final ESLint, Prettier check and TypeScript/Vite production build pass. The same documented frontend commands and isolated Edge test-port commands below are used. No dependency, migration, backend domain/API or provider change was made. Device-location tests remain simulated and do not establish live GPS accuracy. Screenshots are synthetic visual evidence; usability with farmers and remote CI remain pending.
+
+Final Edge browser regression: **14 passed** in 2.0 minutes across desktop 1280×900 and mobile 360×900, using actual FastAPI/PostgreSQL and synthetic accounts. Visitor hero entry reaches registration/login without private farm reads. Farmer login reaches the landing page, whose header action and hero Add my farm button are visible; the hero action is in the initial viewport on both sizes. Farm creation, optional simulated location, crop/first-observation continuation, private history, foreign-owner denial, conflicts, account changes and revocation/no replay remain covered. Empty and returning-farmer landing screenshots plus visitor screenshots are in ignored `frontend/test-results/`. Desktop/mobile captures were inspected visually. Existing development services and the running database were preserved; test child processes closed after the run, using isolated loopback ports 18000/15173 and only the guarded PostgreSQL `_test` database.
+
+## Initial onboarding/location UX checkpoint - 19 November 2026 (dashboard superseded)
+
+The user authorized beginner-friendly entry, navigation and location assistance. Farmer sign-in and restored-session login visits now open `/dashboard`; other roles open `/account`. The dashboard uses owned saved records to guide farm/crop/observation setup and keeps other/archived farms reachable. The form offers local district/village entry, legacy/custom location text, collapsed optional coordinates/area/timezone and explicit browser location. No schema, production API, dependency, map service or agricultural guidance was added.
+
+| Check | Actual local result |
+| --- | --- |
+| Frontend components | **60 passed**, 10 files. Includes role-aware login, saved/empty/failed dashboard states, nested-read failures, dashboard role denial, onboarding observation intent/archived denial, exact legacy label/timezone preservation, district-label save without inferred coordinates, explicit location result, permission/unavailable/timeout paths, cancelled late lookup and paired-coordinate validation. Prior draft/history/account cases remain covered. |
+| Real browser regression | **12 passed** in 1.4 minutes: existing account/admin and farm journeys on Edge desktop 1280×900 and mobile 360×900, actual FastAPI/PostgreSQL on guarded `_test` URLs. Onboarding follows saved state from first farm through crop and first observation; coordinates persist through normal versioned save, alongside history, conflicts, owner isolation and revocation/no-replay coverage. |
+| Location evidence | Browser context supplies deterministic synthetic coordinates/accuracy and grants permission. Component tests simulate device errors/cancellation. These verify application handling, not live GPS accuracy, a real farm visit, district membership or agronomic applicability. |
+| Static checks | Final ESLint, Prettier check and TypeScript/Vite production build pass. `git diff --check` passes. No manifest or lockfile changes. |
+| Visual evidence | Empty/ready dashboard and expanded farm form screenshots plus cultivation/history/denial captures are under ignored `frontend/test-results/`. Desktop/mobile page and open-form width checks pass. Screenshots are synthetic local evidence, not farmer research. |
+| Backend boundary | Only `tests/browser_server.py` changes: optional loopback ports and its explicit web origin. Ruff check/format pass for this harness. Existing domain code/schema are unchanged; previous 191-test backend evidence is historical, not rerun here. |
+
+Commands run from the repository root:
+
+```powershell
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+.\scripts\uv.ps1 run ruff check tests/browser_server.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check tests/browser_server.py --config pyproject.toml
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+npm.cmd --prefix frontend run test:e2e
+```
+
+Default port 8000 was already occupied. The harness now accepts validated `E2E_API_PORT`/`E2E_WEB_PORT` overrides (defaults unchanged), selects its explicit origin and still refuses non-`_test` databases. The user's running services and already healthy Compose PostgreSQL were preserved. Browser runner child processes closed after the final successful run. Initial checks caught an outdated role-routing expectation after a test farmer became an advisor; the helper now checks the actual login role. Vite config imports use explicit TypeScript extensions. Colour-environment warnings remain informational. No remote CI, deployment, real-user/provider evaluation or region validation was run.
+
+## FR-D connected screens verification - 18 November 2026
+
+The user authorized My Farms, farm/cultivation details, observations, explicit stage confirmation, archive and history screens. FR-D reuses the existing theme, session client, fields/notices and native dialog. No dependency, database migration, provider, default development record or external publication was added.
+
+| Check | Actual local result |
+| --- | --- |
+| Frontend behaviour | **41 tests passed** across 10 files: previous 30 tests plus 10 Farm Records component cases and one no-replay client case. Covers stale/uncertain saves, exact versions/decimal payloads, client validation, loading/retry/pagination, inaccessible/archived views, literal notes/history, preserved observation timestamp precision and late replies after account changes. These doubles prove UI behaviour, not server authorization. |
+| Connected browser journeys | **All 12 passed** using headless Microsoft Edge at 1280x900 and 360x900 against the actual FastAPI app and guarded PostgreSQL/pgvector `_test` database. Six existing account journeys and six new Farm Records journeys passed. |
+| Final form-layout check | The focused Farm Records suite then passed **all 6 cases** again, including explicit no-overflow checks while the farm, cultivation and observation creation forms are open. This rerun includes the final homepage availability/plural copy. |
+| Manual workflow | Both sizes create/edit a farm, create a planned cultivation, create/edit an observation, read old text/provenance in history, confirm a stage, change planting date to invalidate it, archive cultivation/farm and read archived records/history. No browser storage or page errors were observed in the full journey. |
+| Access/conflict/session | Real concurrent API edits produce 409 in the browser while its draft stays visible/disabled until explicit reload. Another owner's URL exposes no private record. Sign-out/account switch clears earlier records. Committed account disablement denies the next save, clears its draft, sends the browser to login and does not replay the mutation. Administrator farm navigation is denied. |
+| Visual/accessibility | Actual My Farms, cultivation and observation-history desktop/mobile screenshots were inspected. Layouts fit their viewports without horizontal scrolling. Native archive dialog Escape, initial cancel focus and focus restoration passed. Full-page synthetic screenshots are ignored artifacts under frontend/test-results/. No farmer usability study is claimed. |
+| Static/build | ESLint, Prettier and strict TypeScript/Vite production build pass. Homepage tests cover the Available Farm Records badge, two Planned AI/planning cards and farmer-only entry; illustrative sample labels stay intact. |
+| Documentation | `git diff --check` passed; all 82 local links across 16 changed/new Markdown guides resolve and referenced SRS identifiers remain valid. |
+
+Commands from the repository root:
+
+```powershell
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+npm.cmd --prefix frontend run test:e2e
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts
+```
+
+Docker's existing database service was started for verification; the browser harness applies migrations only to the guarded `_test` database and creates synthetic accounts using generated environment-only credentials. Initial browser checks found test-selector/menu-timing issues that were corrected. The sandboxed runner could not close its own test servers; only process IDs reported by that run were terminated, then the final suite ran with process-cleanup permission and completed all 12 tests/cleanup successfully. Node reported colour-environment warnings and npm printed an update notice; no package update was performed.
+
+Farm POST/PATCH calls opt out of unauthorized-request replay. On 401, farm client handling forgets the token and clears private views; existing GET refresh behaviour remains. On 409, the draft remains until an explicit reload with a discard explanation. Uncertain network/503 creation offers record review rather than a retry. Device-local observation input and farm-timezone display are explicit; notes-only changes preserve the exact original instant. Server authority and transaction guarantees remain the unchanged FR-C implementation.
+
+Backend migration/reset tests were not rerun concurrently with browser tests. Browser servers closed after the successful runs; the Compose database service was stopped afterward with its named volume preserved. No remote CI, deployment, source/AI evaluation, tasks, proposals, weather or advisor sharing was run or added. Evidence covers manual Farm Records only; full V0/AT01/AT02 and real-user operating/retention gates remain pending. All live data used here was synthetic local test data.
+
+## FR-C owner-only services/API verification - 18 November 2026
+
+The user authorized backend services/APIs, leaving screens and remote CI pending. FR-C adds DTOs, farm services, 19 operations on 13 paths and router registration, using the unchanged `0005_farm_records` schema. Tests exercise the actual ASGI app, JWT/session checks and real PostgreSQL transactions with synthetic data. No farmer permission, provider or database double establishes these results.
+
+| Check | Actual local result |
+| --- | --- |
+| Full backend suite | **191 passed** in 48.43 seconds on the final run, no warnings. Includes 61 new FR-C API cases, 68 FR-B persistence cases and 62 existing account/foundation cases. |
+| Access boundary | All farm operations reject absent auth and excluded advisor/admin roles. Foreign/missing IDs have uniform 404s; mixed parents, history, search/count/pagination and inactive/current-role cases cannot widen access. A direct service call also rejects administrator access without relying on route guards. |
+| Manual lifecycle | Create farm/cultivation/observation, explicit stage confirmation, crop/date invalidation, no-op/paired/null PATCH, preserved observation/provenance history, archives and inherited read-only states pass. Planned dates use the farm timezone; observations normalize to UTC. |
+| Input/privacy | Ownership/author/parent/confirmation mass assignment, invalid dates/coordinates/areas/units/timezone/crop/text and future/naive observations fail safely. Browser write protections and no-store/request IDs pass; responses omit raw private values and SQL failure details. |
+| Concurrency | Real competing requests and PostgreSQL lock waits prove one winner for stale edits, safe archive-first/child-first ordering and denial of a writer waiting behind committed account disablement/revocation. |
+| Transaction failure | Immediate/deferred revision/audit failure returns 503 before success and rolls back the new farm, revision and event. Existing persistence/account rollback regressions remain green. |
+| Static/schema | Ruff lint/format pass. Both development/test `alembic check` report no new operations. No dependency, lockfile or schema migration was added for FR-C. |
+| Contract/docs | Generated OpenAPI has 19 Farm Records operations on 13 paths with forbidden extra create fields and no client owner property. `git diff --check`, all 78 local Markdown links across 16 changed/new guides and SRS references pass. |
+
+Commands actually run from the project root:
+
+```powershell
+$farmCache = Join-Path (Get-Location) '.tools/pytest-cache-frc'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$farmCache" --tb=short -q
+.\scripts\uv.ps1 run ruff check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run alembic -x db=test check
+.\scripts\uv.ps1 run alembic check
+```
+
+Initial targeted runs found and corrected a nullable-soil validator issue and a crop SELECT-only permission conflict from an unnecessary row lock. The final service preserves the read-only catalogue and checks crop assignment without expanding grants. Test fixture cleanup also removes operator-created synthetic catalogue variations between tests/reruns, in the guarded `_test` database only.
+
+No frontend, farm browser journey, remote CI, deployment, AI/provider evaluation, case sharing or proposal/task execution was run or added. API evidence covers the manual-record/owner portions of AT01/AT02; full acceptance remains pending. Retention/account erasure and external-user operating gates remain unresolved. Refer to FR-B below for the prior development migration; FR-C leaves development records/schema unchanged. Docker Desktop and the previously stopped Compose database were started to run the PostgreSQL checks; the database service was stopped afterward with its named volume preserved.
+
+## Farm Records planning checkpoint - 18 November 2026
+
+[FARM_RECORDS.md](FARM_RECORDS.md) defines FR02/FR05-FR10, archive/history, audit-isolation and concurrency cases. At the original FR-A checkpoint only documentation existed; no farm migration/API/UI or authorization test had run. The subsequent FR-B record below supersedes its persistence status. Identity/persistence results do not establish the later HTTP ownership boundary or full AT01/AT02 completion.
+
+Documentation verification: `git diff --check` passed. A local Python check resolved all 59 local Markdown links across the 11 changed/new documents, confirmed the plan's FR/DR/AT identifiers exist in the SRS, checked the FR-A through FR-E sequence, and confirmed changes are Markdown-only. Review compared the access/parent/archive/version rules against the existing identity/audit code and architecture; no farming runtime behaviour, database migration, browser journey or remote CI was executed in this documentation task.
+
+## FR-B persistence verification - 18 November 2026
+
+The user authorized the database layer after planning. Migration `0005_farm_records` adds eight tables, fixed supported chilli reference, immutable owner/parent/author identity triggers, per-entity revision/event uniqueness and restricted app grants. Tests use only the guarded dedicated PostgreSQL 18/pgvector database; no SQLite, real farmer records or providers are used.
+
+| Check | Actual local result |
+| --- | --- |
+| Backend suite | 130 passed, no warnings on the final run; includes 68 Farm Records cases and the existing 62 account/foundation tests. |
+| Domain constraints/history | Paired coordinates/area, finite dates, bounds/units, unknown soil/stage, planned dates, confirmation provenance, nonblank text, strict snapshot shape/identity and preserved observation revisions passed. |
+| Permissions/references | App DELETE/TRUNCATE and revision/audit rewrites denied; crop catalogue is read-only. Owner/parent/author reassignment and mixed audit parent chains fail. Referenced-row deletion is blocked; account removal keeps tombstone-linked farm history. |
+| Transactions/concurrency | Real concurrent duplicate revision/audit attempts produce one committed row. Immediate and deferred revision/audit failures roll back the record, revision and audit transaction. |
+| Migrations | Upgrade from 0004 preserves existing users/notifications; downgrade/rebuild from base passes in the dedicated test database. Injected migration-transaction failure rolls back tables, seed, function and revision. |
+| Local development | Upgraded from 0004 to 0005 without seeding farm records. `alembic current` reports 0005 head and `alembic check` reports no new operations. Worker `--once` reports database ready, still no business job handlers. |
+| Static/docs | Ruff lint/format passed. Standalone test-database `alembic check` also reports no new operations. `git diff --check` and all 77 local links across 15 changed/new Markdown guides passed; SRS references resolve. |
+
+Commands run from the repository root (the wrapper runs Python in backend/):
+
+```powershell
+.\scripts\uv.ps1 run alembic -x db=test upgrade head
+$farmCache = Join-Path (Get-Location) '.tools/pytest-cache-frb'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$farmCache" --tb=short -q
+.\scripts\uv.ps1 run ruff check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run ruff format --check . ../scripts/configure_local.py --config pyproject.toml
+.\scripts\uv.ps1 run alembic upgrade head
+.\scripts\uv.ps1 run alembic current
+.\scripts\uv.ps1 run alembic check
+.\scripts\uv.ps1 run alembic -x db=test check
+.\scripts\uv.ps1 run python -m app.worker --once
+```
+
+The absolute ignored cache path avoids an existing Windows pytest-cache write issue. Earlier default-cache checks reported warnings, and a relative path containing `..` failed cache initialization in the installed pytest; the final absolute-path run completed without warnings. Development data was not reset; destructive upgrade/downgrade/failure checks target `_test` only. The previously stopped Compose database was started for verification and stopped afterward with its named volume preserved. No farm service automatically creates revisions/audit yet: tests assemble transactions explicitly to verify persistence. Live owner/session enforcement, archive-versus-write races, optimistic service conflicts, browser journeys, frontend checks and remote CI were not implemented/run by FR-B. Do not mark AT01/AT02 or V0 complete.
+
 ## M0 commands
 
 From the project root in PowerShell:

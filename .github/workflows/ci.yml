@@ -1,4 +1,4 @@
-name: Foundation and account checks
+name: Application checks
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
       - name: Start PostgreSQL with pgvector
         working-directory: .
         run: docker compose up -d --wait
-      - name: Apply foundation migration
+      - name: Apply application migrations
         run: uv run alembic upgrade head
       - name: Test rules, API and real PostgreSQL permissions
         run: uv run pytest --require-database
@@ -89,7 +89,7 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Test real account journeys on dedicated test database
+      - name: Test account, farm, support and admin journeys
         working-directory: frontend
         run: npm run test:e2e
       - name: Database failure diagnostics

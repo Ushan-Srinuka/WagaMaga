@@ -74,8 +74,36 @@ export default function AccountShell() {
         <aside id="account-nav" className={`sidebar ${menu ? 'is-open' : ''}`}>
           <span className="nav-label">Your workspace</span>
           <nav aria-label="Account navigation">
+            {user?.role === 'administrator' && (
+              <NavLink to="/admin/overview" onClick={() => setMenu(false)}>
+                <span aria-hidden="true">⌂</span> Admin Overview
+              </NavLink>
+            )}
+            {user?.role === 'farmer' && (
+              <NavLink to="/" onClick={() => setMenu(false)}>
+                <span aria-hidden="true">⌂</span> Home
+              </NavLink>
+            )}
+            {user?.role === 'farmer' && (
+              <NavLink to="/farms" onClick={() => setMenu(false)}>
+                <span aria-hidden="true">♧</span> My Farms
+              </NavLink>
+            )}
             <NavLink to="/account" onClick={() => setMenu(false)}>
               <span aria-hidden="true">◉</span> My account
+            </NavLink>
+            {user?.role === 'farmer' && (
+              <NavLink to="/support" onClick={() => setMenu(false)}>
+                <span aria-hidden="true">?</span> My support requests
+              </NavLink>
+            )}
+            {user?.role === 'administrator' && (
+              <NavLink to="/admin/support" onClick={() => setMenu(false)}>
+                <span aria-hidden="true">?</span> Support inbox
+              </NavLink>
+            )}
+            <NavLink to="/help" onClick={() => setMenu(false)}>
+              <span aria-hidden="true">ⓘ</span> Help
             </NavLink>
             {user?.role === 'administrator' && (
               <NavLink to="/admin/users" onClick={() => setMenu(false)}>
@@ -114,7 +142,7 @@ export default function AccountShell() {
         </aside>
         <main id="main-content" className="workspace-content">
           {error && <Notice message={error} />}
-          <Outlet />
+          <Outlet key={`${user?.id}:${user?.role}`} />
         </main>
       </div>
     </div>

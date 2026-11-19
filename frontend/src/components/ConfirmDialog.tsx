@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 export default function ConfirmDialog({
   title,
@@ -7,6 +7,10 @@ export default function ConfirmDialog({
   error,
   onConfirm,
   onClose,
+  eyebrow = 'Confirm account change',
+  confirmLabel = 'Confirm change',
+  confirmDisabled = false,
+  children,
 }: {
   title: string
   description: string
@@ -14,6 +18,10 @@ export default function ConfirmDialog({
   error: string
   onConfirm: () => void
   onClose: () => void
+  eyebrow?: string
+  confirmLabel?: string
+  confirmDisabled?: boolean
+  children?: ReactNode
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -36,9 +44,10 @@ export default function ConfirmDialog({
         if (!busy) onClose()
       }}
     >
-      <span className="eyebrow">Confirm account change</span>
+      <span className="eyebrow">{eyebrow}</span>
       <h2 id="confirm-title">{title}</h2>
       <p id="confirm-description">{description}</p>
+      {children}
       {error && (
         <p role="alert" className="form-notice">
           {error}
@@ -48,8 +57,12 @@ export default function ConfirmDialog({
         <button type="button" disabled={busy} onClick={onClose}>
           Cancel
         </button>
-        <button className="primary" disabled={busy} onClick={onConfirm}>
-          {busy ? 'Saving…' : 'Confirm change'}
+        <button
+          className="primary"
+          disabled={busy || confirmDisabled}
+          onClick={onConfirm}
+        >
+          {busy ? 'Saving…' : confirmLabel}
         </button>
       </div>
     </dialog>

@@ -4,6 +4,7 @@ import { useSession } from '../../app/session-context'
 import Field from '../../components/Field'
 import Notice from '../../components/Notice'
 import Brand from '../../components/Brand'
+import { signedInHome } from '../../lib/navigation'
 import { registerAccount, signIn } from '../../lib/accounts'
 import {
   isSignupPasswordValid,
@@ -26,7 +27,7 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
         Restoring your session…
       </main>
     )
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to={signedInHome(user.role)} replace />
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
@@ -44,8 +45,11 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
         await registerAccount(name, email, password)
         navigate('/login?registered=1', { replace: true })
       } else {
-        setUser((await signIn(email, password)).user)
-        navigate('/', { replace: true })
+        const signedIn = (await signIn(email, password)).user
+        setUser(signedIn)
+        navigate(signedInHome(signedIn.role), {
+          replace: true,
+        })
       }
       setPassword('')
       setConfirmation('')
@@ -61,9 +65,9 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
         <Link to="/" className="wordmark">
           <Brand />
         </Link>
-        <span className="quiet-label">
-          A little clarity. A better tomorrow.
-        </span>
+        <Link className="auth-help-link" to="/help#sign-in">
+          Need help signing in?
+        </Link>
       </header>
       <main className="auth-layout">
         <section className="auth-story" aria-label="Welcome to WagaMaga">

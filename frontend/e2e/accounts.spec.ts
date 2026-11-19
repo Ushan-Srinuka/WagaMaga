@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
+import { apiRoot, webOrigin } from './environment.ts'
 
 const password = process.env.E2E_PASSWORD!
 const adminEmail = `browser-admin-${process.env.E2E_RUN_ID}@example.com`
-const headers = { Origin: 'http://127.0.0.1:5173', 'X-WagaMaga-Client': 'web' }
+const headers = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
 function email() {
   return `browser-${randomBytes(6).toString('hex')}@example.com`
 }
@@ -11,13 +12,20 @@ async function login(page: Page, address: string, secret = password) {
   await page.goto('/login')
   await page.getByLabel('Email address').fill(address)
   await page.getByLabel('Password', { exact: true }).fill(secret)
+  const response = page.waitForResponse(
+    (result) =>
+      new URL(result.url()).pathname === '/api/v1/auth/login' &&
+      result.request().method() === 'POST',
+  )
   await page.getByRole('button', { name: 'Sign in', exact: false }).click()
-  await expect(page).toHaveURL('/')
-  await expect(
-    page.getByRole('heading', {
-      name: /Grow with knowledge\. Plan with confidence\./,
-    }),
-  ).toBeVisible()
+  const { user } = await (await response).json()
+  await expect(page).toHaveURL(
+    user.role === 'farmer'
+      ? '/'
+      : user.role === 'administrator'
+        ? '/admin/overview'
+        : '/account',
+  )
   await page.goto('/account')
   await expect(page.getByRole('heading', { name: 'My account.' })).toBeVisible()
 }
@@ -38,30 +46,27 @@ test('stale administrator edits reload the record and require a fresh decision',
   request,
 }) => {
   const address = email()
-  await request.post('http://127.0.0.1:8000/api/v1/auth/register', {
+  await request.post(`${apiRoot}/auth/register`, {
     headers,
     data: { email: address, password, display_name: 'Stale browser account' },
   })
   await login(page, adminEmail)
-  const authentication = await request.post(
-    'http://127.0.0.1:8000/api/v1/auth/login',
-    {
-      headers,
-      data: { email: adminEmail, password },
-    },
-  )
+  const authentication = await request.post(`${apiRoot}/auth/login`, {
+    headers,
+    data: { email: adminEmail, password },
+  })
   expect(authentication.ok()).toBe(true)
   const { access_token } = await authentication.json()
   const adminHeaders = { ...headers, Authorization: `Bearer ${access_token}` }
   const found = await request.get(
-    `http://127.0.0.1:8000/api/v1/admin/users?q=${encodeURIComponent(address)}`,
+    `${apiRoot}/admin/users?q=${encodeURIComponent(address)}`,
     { headers: adminHeaders },
   )
   const { items } = await found.json()
   await page.goto(`/admin/users/${items[0].id}`)
   await expect(page.getByLabel('Account role')).toHaveValue('farmer')
   const concurrent = await request.patch(
-    `http://127.0.0.1:8000/api/v1/admin/users/${items[0].id}/role`,
+    `${apiRoot}/admin/users/${items[0].id}/role`,
     {
       headers: adminHeaders,
       data: {
@@ -205,33 +210,30 @@ test('administrator searches accounts and confirms role/status changes', async (
   browser,
 }, testInfo) => {
   const address = email()
-  const registration = await request.post(
-    'http://127.0.0.1:8000/api/v1/auth/register',
-    {
-      headers,
-      data: {
-        email: address,
-        password,
-        display_name: 'Synthetic review account',
-      },
+  const registration = await request.post(`${apiRoot}/auth/register`, {
+    headers,
+    data: {
+      email: address,
+      password,
+      display_name: 'Synthetic review account',
     },
-  )
+  })
   expect(registration.ok()).toBe(true)
   const farmerContext = await browser.newContext({
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: webOrigin,
     viewport: page.viewportSize() ?? undefined,
   })
   const farmerPage = await farmerContext.newPage()
   await login(farmerPage, address)
   await login(page, adminEmail)
-  const administratorLogin = await request.post(
-    'http://127.0.0.1:8000/api/v1/auth/login',
-    { headers, data: { email: adminEmail, password } },
-  )
+  const administratorLogin = await request.post(`${apiRoot}/auth/login`, {
+    headers,
+    data: { email: adminEmail, password },
+  })
   const { access_token: adminToken } = await administratorLogin.json()
   const adminHeaders = { ...headers, Authorization: `Bearer ${adminToken}` }
   const removedBefore = await request.get(
-    'http://127.0.0.1:8000/api/v1/admin/users?status=deleted',
+    `${apiRoot}/admin/users?status=deleted`,
     { headers: adminHeaders },
   )
   const deletedBefore = (await removedBefore.json()).total as number
@@ -306,7 +308,7 @@ test('administrator searches accounts and confirms role/status changes', async (
       .first(),
   ).toBeVisible()
   const removedAfter = await request.get(
-    'http://127.0.0.1:8000/api/v1/admin/users?status=deleted',
+    `${apiRoot}/admin/users?status=deleted`,
     { headers: adminHeaders },
   )
   expect((await removedAfter.json()).total).toBe(deletedBefore + 1)

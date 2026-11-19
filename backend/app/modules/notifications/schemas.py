@@ -11,7 +11,7 @@ class NotificationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    event_type: Literal["role_changed", "account_reenabled", "password_changed"]
+    event_type: Literal["role_changed", "account_reenabled", "password_changed", "support_updated"]
     title: str
     body: str
     created_at: datetime

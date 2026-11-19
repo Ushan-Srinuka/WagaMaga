@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 
-SCHEMA_REVISION = "0004_in_app_notifications"
+SCHEMA_REVISION = "0007_support"
 
 
 @dataclass(frozen=True)

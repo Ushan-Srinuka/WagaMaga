@@ -1,17 +1,18 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
+import { apiPort, webPort } from './e2e/environment.ts'
 
 export default defineConfig({
   plugins: [react()],
   server: {
     host: '127.0.0.1',
-    port: 5173,
+    port: webPort,
     strictPort: true,
     proxy: {
-      '/health': 'http://127.0.0.1:8000',
-      '/docs': 'http://127.0.0.1:8000',
-      '/openapi.json': 'http://127.0.0.1:8000',
-      '/api': 'http://127.0.0.1:8000',
+      '/health': `http://127.0.0.1:${apiPort}`,
+      '/docs': `http://127.0.0.1:${apiPort}`,
+      '/openapi.json': `http://127.0.0.1:${apiPort}`,
+      '/api': `http://127.0.0.1:${apiPort}`,
     },
   },
   test: {

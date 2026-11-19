@@ -73,10 +73,17 @@ def accounts(identity_engines):
     with owner.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE notifications, audit_logs, refresh_tokens, refresh_sessions, "
+                "TRUNCATE support_events, support_messages, support_tickets, "
+                "farm_deletions, farm_audit_events, observation_revisions, "
+                "cultivation_revisions, "
+                "farm_revisions, farm_observations, cultivations, farms, "
+                "notifications, audit_logs, refresh_tokens, refresh_sessions, "
                 "auth_rate_limits, users"
             )
         )
+        # Operator-only catalogue variations in a test must not leak into later tests/reruns.
+        connection.execute(text("DELETE FROM crop_types WHERE code <> 'chilli'"))
+        connection.execute(text("UPDATE crop_types SET supported=true WHERE code='chilli'"))
     settings = settings.model_copy(
         update={
             "database_url": settings.test_database_url,
@@ -124,3 +131,91 @@ def account_client(accounts):
         },
     ) as client:
         yield client
+
+
+@pytest.fixture
+def farm_records(accounts):
+    """Explicit synthetic records for two owners; never seeds the development database."""
+    from datetime import UTC, date, datetime
+    from decimal import Decimal
+    from uuid import NAMESPACE_URL, uuid5
+
+    from sqlalchemy.orm import Session
+
+    from app.modules.farms.history import record_snapshot
+    from app.modules.farms.models import (
+        CHILLI_ID,
+        Cultivation,
+        CultivationRevision,
+        Farm,
+        FarmAuditEvent,
+        FarmObservation,
+        FarmRevision,
+        ObservationRevision,
+    )
+
+    seeds = {}
+    with Session(accounts[1]) as db, db.begin():
+        for owner in ("farmer", "other-farmer"):
+            actor = accounts[3][owner]
+            farm = Farm(
+                id=uuid5(NAMESPACE_URL, f"wagamaga-synthetic-farm-{owner}"),
+                farmer_id=actor,
+                name=f"SYNTHETIC-PRIVATE-FARM-{owner}",
+                location="Synthetic location, not a real farm",
+                latitude=Decimal("8.3"),
+                longitude=Decimal("80.4"),
+                area_value=Decimal("2"),
+                area_unit="acre",
+            )
+            db.add(farm)
+            db.flush()
+            cultivation = Cultivation(
+                id=uuid5(NAMESPACE_URL, f"wagamaga-synthetic-cultivation-{owner}"),
+                farm_id=farm.id,
+                crop_type_id=CHILLI_ID,
+                planting_date=date(2026, 1, 10),
+                area_value=Decimal("1.25"),
+                area_unit="acre",
+            )
+            db.add(cultivation)
+            db.flush()
+            observation = FarmObservation(
+                id=uuid5(NAMESPACE_URL, f"wagamaga-synthetic-observation-{owner}"),
+                cultivation_id=cultivation.id,
+                recorded_by=actor,
+                observed_at=datetime(2026, 1, 2, 8, tzinfo=UTC),
+                notes=f"SYNTHETIC-PRIVATE-NOTE-{owner}: pre-planting record only",
+            )
+            db.add(observation)
+            db.flush()
+            for record, revision, parent, operation in (
+                (farm, FarmRevision, "farm_id", "farm_created"),
+                (cultivation, CultivationRevision, "cultivation_id", "cultivation_created"),
+                (observation, ObservationRevision, "observation_id", "observation_created"),
+            ):
+                db.add(
+                    revision(
+                        **{parent: record.id},
+                        version=1,
+                        snapshot=record_snapshot(record),
+                        changed_by=actor,
+                    )
+                )
+                db.add(
+                    FarmAuditEvent(
+                        actor_id=actor,
+                        farm_id=farm.id,
+                        cultivation_id=cultivation.id if record is not farm else None,
+                        observation_id=observation.id if record is observation else None,
+                        operation=operation,
+                        entity_version=1,
+                        request_id=str(uuid5(NAMESPACE_URL, f"synthetic-{owner}-{operation}")),
+                    )
+                )
+            seeds[owner] = {
+                "farm": farm.id,
+                "cultivation": cultivation.id,
+                "observation": observation.id,
+            }
+    return seeds

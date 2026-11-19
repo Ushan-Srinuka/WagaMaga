@@ -13,7 +13,8 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         CheckConstraint(
-            "event_type IN ('role_changed','account_reenabled','password_changed')",
+            "event_type IN ('role_changed','account_reenabled','password_changed',"
+            "'support_updated')",
             name="notifications_event_type",
         ),
         Index("ix_notifications_recipient_created", "recipient_id", "created_at", "id"),
