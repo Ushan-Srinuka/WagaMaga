@@ -98,7 +98,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Test account, farm, support, admin and chilli journeys
         working-directory: frontend
-        run: npm run test:e2e
+        run: npm run test:e2e -- --reporter=list,github
       - name: Database failure diagnostics
         if: failure()
         run: docker compose logs --tail 100 db
