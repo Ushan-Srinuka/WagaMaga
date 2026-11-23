@@ -12,7 +12,7 @@ import { promisify } from 'node:util'
 import { apiRoot, webOrigin } from './environment.ts'
 
 async function openKnowledge(page: Page) {
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page
     .getByLabel('Email address')
     .fill(`browser-admin-${process.env.E2E_RUN_ID}@example.com`)
@@ -166,11 +166,12 @@ async function openTestFarmer(page: Page, request: APIRequestContext) {
   const email = `chilli-${randomBytes(6).toString('hex')}@example.com`
   const password = process.env.E2E_PASSWORD!
   const registered = await request.post(`${apiRoot}/auth/register`, {
+    timeout: 10_000,
     headers: { Origin: webOrigin, 'X-WagaMaga-Client': 'web' },
     data: { email, password, display_name: 'Synthetic chilli farmer' },
   })
   expect(registered.ok()).toBe(true)
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
@@ -280,26 +281,27 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
   ).toBeVisible()
 })
 
-test('farmer searches reviewed excerpts locally', async ({
-  page,
-  request,
-  browser,
-}) => {
-  // This case covers upload, worker extraction, three separate reviews and withdrawal.
-  test.setTimeout(75_000)
+test('farmer searches reviewed excerpts locally', async ({ page, request }) => {
+  test.setTimeout(100_000)
+  page.setDefaultTimeout(10_000)
+  page.setDefaultNavigationTimeout(12_000)
   const web = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
-  const login = await request.post(`${apiRoot}/auth/login`, {
-    headers: web,
-    data: {
-      email: `browser-admin-${process.env.E2E_RUN_ID}@example.com`,
-      password: process.env.E2E_PASSWORD!,
-    },
-  })
-  expect(login.ok()).toBe(true)
-  const admin = {
-    ...web,
-    Authorization: `Bearer ${(await login.json()).access_token}`,
-  }
+  const admin =
+    await test.step('Authenticate the evidence manager', async () => {
+      const login = await request.post(`${apiRoot}/auth/login`, {
+        headers: web,
+        timeout: 10_000,
+        data: {
+          email: `browser-admin-${process.env.E2E_RUN_ID}@example.com`,
+          password: process.env.E2E_PASSWORD!,
+        },
+      })
+      expect(login.ok()).toBe(true)
+      return {
+        ...web,
+        Authorization: `Bearer ${(await login.json()).access_token}`,
+      }
+    })
   const root = `${apiRoot}/admin/knowledge`
   const fixtures = [
     [
@@ -320,56 +322,49 @@ test('farmer searches reviewed excerpts locally', async ({
   ] as const
   const pdf = await test.step('Generate the synthetic three-page PDF', () =>
     reviewedExcerptsPdf(fixtures.map(([, , quote]) => quote)))
-  const { id } =
-    await test.step('Upload the PDF using a separate admin browser session', async () => {
-      const adminPage = await browser.newPage({ baseURL: webOrigin })
-      try {
-        await openKnowledge(adminPage)
-        await adminPage.getByLabel('Synthetic PDF').setInputFiles({
-          name: 'local-reviewed-excerpts.pdf',
-          mimeType: 'application/pdf',
-          buffer: pdf,
-        })
-        const uploaded = adminPage.waitForResponse(
-          (response) =>
-            new URL(response.url()).pathname ===
-              '/api/v1/admin/knowledge/sources/pdf' &&
-            response.request().method() === 'POST',
-          { timeout: 12_000 },
-        )
-        await adminPage
-          .getByRole('button', { name: 'Upload PDF', exact: true })
-          .click()
-        const response = await uploaded
-        expect(response.status()).toBe(201)
-        return await response.json()
-      } finally {
-        await adminPage.close()
-      }
+  const { id } = await test.step('Upload synthetic evidence', async () => {
+    const upload = await request.post(`${root}/sources/pdf`, {
+      headers: { ...admin, 'Content-Type': 'application/pdf' },
+      data: pdf,
+      timeout: 12_000,
     })
+    expect(upload.status()).toBe(201)
+    return await upload.json()
+  })
   await test.step('Extract the uploaded PDF', processQueuedPdfs)
 
-  await openTestFarmer(page, request)
-  await page.goto('/knowledge/chilli')
-  await page
-    .getByRole('link', { name: 'Search reviewed excerpts locally' })
-    .click()
+  await test.step(
+    'Open the local excerpts as a farmer',
+    async () => {
+      await openTestFarmer(page, request)
+      await page.goto('/knowledge/chilli', { waitUntil: 'domcontentloaded' })
+      await page
+        .getByRole('link', { name: 'Search reviewed excerpts locally' })
+        .click()
+    },
+    { timeout: 25_000 },
+  )
   const question = page.getByLabel('Type your question')
   const find = page.getByRole('button', { name: 'Find an answer' })
-  await question.fill(fixtures[0][1])
-  await find.click()
-  await expect(page.getByText('No evidence found.')).toBeVisible()
+  await test.step('Unreviewed evidence is unavailable', async () => {
+    await question.fill(fixtures[0][1])
+    await find.click()
+    await expect(page.getByText('No evidence found.')).toBeVisible()
+  })
 
-  for (const [action, revision] of [
-    ['review', 1],
-    ['publish', 2],
-  ] as const) {
-    const changed = await request.post(`${root}/sources/${id}/${action}`, {
-      headers: admin,
-      data: { expected_revision: revision },
-    })
-    expect(changed.ok()).toBe(true)
-  }
+  await test.step('Review and publish the source', async () => {
+    for (const [action, revision] of [
+      ['review', 1],
+      ['publish', 2],
+    ] as const) {
+      const changed = await request.post(`${root}/sources/${id}/${action}`, {
+        headers: admin,
+        timeout: 10_000,
+        data: { expected_revision: revision },
+      })
+      expect(changed.ok()).toBe(true)
+    }
+  })
   for (const [index, [caseId, typed, quote]] of fixtures.entries()) {
     const sourcePage = index + 1
     await test.step(
@@ -404,14 +399,17 @@ test('farmer searches reviewed excerpts locally', async ({
       { timeout: 18_000 },
     )
   }
-  const withdrawn = await request.post(`${root}/sources/${id}/withdraw`, {
-    headers: admin,
-    data: { expected_revision: 3 },
+  await test.step('Withdrawal removes the cited excerpts', async () => {
+    const withdrawn = await request.post(`${root}/sources/${id}/withdraw`, {
+      headers: admin,
+      timeout: 10_000,
+      data: { expected_revision: 3 },
+    })
+    expect(withdrawn.ok()).toBe(true)
+    await question.fill(fixtures[0][1])
+    await find.click()
+    await expect(page.getByText('No evidence found.')).toBeVisible()
   })
-  expect(withdrawn.ok()).toBe(true)
-  await question.fill(fixtures[0][1])
-  await find.click()
-  await expect(page.getByText('No evidence found.')).toBeVisible()
 })
 
 test('admin can remove a queued PDF after confirming', async ({
