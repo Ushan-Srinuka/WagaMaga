@@ -282,7 +282,6 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
 })
 
 test('farmer searches reviewed excerpts locally', async ({ page, request }) => {
-  test.setTimeout(100_000)
   page.setDefaultTimeout(10_000)
   page.setDefaultNavigationTimeout(12_000)
   const web = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
@@ -341,6 +340,10 @@ test('farmer searches reviewed excerpts locally', async ({ page, request }) => {
       await page
         .getByRole('link', { name: 'Search reviewed excerpts locally' })
         .click()
+      await expect(page).toHaveURL('/knowledge/chilli/local')
+      await expect(
+        page.getByRole('heading', { name: 'Search reviewed chilli excerpts' }),
+      ).toBeVisible()
     },
     { timeout: 25_000 },
   )
