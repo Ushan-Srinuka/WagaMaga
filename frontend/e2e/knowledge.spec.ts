@@ -29,13 +29,18 @@ async function openKnowledge(page: Page) {
   ).toBeVisible()
 }
 
-async function processQueuedPdfs() {
+function fixturePython() {
   const backend = fileURLToPath(new URL('../../backend/', import.meta.url))
   const python = join(
     backend,
     '.venv',
     process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
   )
+  return { backend, python }
+}
+
+async function processQueuedPdfs() {
+  const { backend, python } = fixturePython()
   await promisify(execFile)(
     python,
     ['tests/browser_server.py', '--process-pdfs'],
@@ -44,6 +49,20 @@ async function processQueuedPdfs() {
       timeout: 20000,
     },
   )
+}
+
+async function reviewedExcerptsPdf(quotes: string[]) {
+  const { backend, python } = fixturePython()
+  const { stdout } = await promisify(execFile)(
+    python,
+    [
+      '-c',
+      'import sys\nfrom app.modules.knowledge.preview_fixture import fixture_pdf\nsys.stdout.buffer.write(fixture_pdf(tuple(sys.argv[1:])))',
+      ...quotes,
+    ],
+    { cwd: backend, encoding: 'buffer', timeout: 10_000 },
+  )
+  return stdout
 }
 
 test('live Gemini demo answers with the published page citation', async ({
@@ -264,9 +283,10 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
 test('farmer searches reviewed excerpts locally', async ({
   page,
   request,
-  context,
   browser,
 }) => {
+  // This case covers upload, worker extraction, three separate reviews and withdrawal.
+  test.setTimeout(75_000)
   const web = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
   const login = await request.post(`${apiRoot}/auth/login`, {
     headers: web,
@@ -298,12 +318,8 @@ test('farmer searches reviewed excerpts locally', async ({
       'The fictional fertilizer review uses a sample soil test reference.',
     ],
   ] as const
-  const document = await context.newPage()
-  await document.setContent(
-    fixtures.map(([, , quote]) => `<p>${quote}</p>`).join(''),
-  )
-  const pdf = await document.pdf()
-  await document.close()
+  const pdf = await test.step('Generate the synthetic three-page PDF', () =>
+    reviewedExcerptsPdf(fixtures.map(([, , quote]) => quote)))
   const { id } =
     await test.step('Upload the PDF using a separate admin browser session', async () => {
       const adminPage = await browser.newPage({ baseURL: webOrigin })
@@ -354,32 +370,39 @@ test('farmer searches reviewed excerpts locally', async ({
     })
     expect(changed.ok()).toBe(true)
   }
-  for (const [caseId, typed, quote] of fixtures) {
-    const current = await request.get(`${root}/evaluation/${caseId}`, {
-      headers: admin,
-    })
-    expect(current.ok()).toBe(true)
-    const approval = await request.post(
-      `${root}/evaluation/${caseId}/decisions`,
-      {
-        headers: admin,
-        data: {
-          expected_revision: (await current.json()).revision,
-          outcome: 'suitable',
-          version_id: id,
-          page_number: 1,
-          approved_excerpt: quote,
-        },
+  for (const [index, [caseId, typed, quote]] of fixtures.entries()) {
+    const sourcePage = index + 1
+    await test.step(
+      `Approve and verify excerpt ${caseId}`,
+      async () => {
+        const current = await request.get(`${root}/evaluation/${caseId}`, {
+          headers: admin,
+        })
+        expect(current.ok()).toBe(true)
+        const approval = await request.post(
+          `${root}/evaluation/${caseId}/decisions`,
+          {
+            headers: admin,
+            data: {
+              expected_revision: (await current.json()).revision,
+              outcome: 'suitable',
+              version_id: id,
+              page_number: sourcePage,
+              approved_excerpt: quote,
+            },
+          },
+        )
+        expect(approval.status()).toBe(201)
+        await question.fill(typed)
+        await find.click()
+        const answer = page.getByRole('article', { name: 'Cited answer' })
+        await expect(answer).toContainText(quote)
+        await expect(answer).toContainText(`Page ${sourcePage}`)
+        await answer.getByRole('button', { name: 'Read cited page' }).click()
+        await expect(answer.getByText(quote, { exact: false })).toHaveCount(2)
       },
+      { timeout: 18_000 },
     )
-    expect(approval.status()).toBe(201)
-    await question.fill(typed)
-    await find.click()
-    const answer = page.getByRole('article', { name: 'Cited answer' })
-    await expect(answer).toContainText(quote)
-    await expect(answer).toContainText('Page 1')
-    await answer.getByRole('button', { name: 'Read cited page' }).click()
-    await expect(answer.getByText(quote, { exact: false })).toHaveCount(2)
   }
   const withdrawn = await request.post(`${root}/sources/${id}/withdraw`, {
     headers: admin,
