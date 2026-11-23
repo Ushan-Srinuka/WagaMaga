@@ -93,7 +93,7 @@ export default function NotificationsPage() {
             <h1>
               Notifications<span>.</span>
             </h1>
-            <p>Account and support updates that are just for you.</p>
+            <p>Your account, support and farm weather updates.</p>
           </div>
           <span className="count-label">
             {page?.unread_count ?? '—'} unread
@@ -151,6 +151,11 @@ export default function NotificationsPage() {
                       {item.event_type === 'support_updated' && (
                         <p>
                           <Link to="/support">Open My support requests</Link>
+                        </p>
+                      )}
+                      {item.event_type === 'weather_review' && (
+                        <p>
+                          <Link to="/farms">Open My Farms</Link>
                         </p>
                       )}
                       <time dateTime={item.created_at}>

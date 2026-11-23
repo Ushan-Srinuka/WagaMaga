@@ -11,10 +11,8 @@ import ExactLocation from './ExactLocation'
 export function ScopeNote() {
   return (
     <p className="record-scope">
-      Start with chilli records. The planned guidance pilot focuses on
-      Anuradhapura, subject to agricultural review. You can keep manual farm
-      records for other locations; this does not establish guidance coverage. AI
-      guidance is not available yet.
+      You can keep farm records for any location. Cultivation guidance uses
+      selected chilli references for farms recorded in Anuradhapura.
     </p>
   )
 }
@@ -357,9 +355,8 @@ export function FarmForm({
           />
         )}
         <p className="record-scope">
-          Manual records can use other locations. Planned guidance starts with
-          chilli in Anuradhapura, subject to review; no AI guidance is available
-          yet.
+          Chilli cultivation guidance is available for farms recorded in
+          Anuradhapura.
         </p>
         <ExactLocation
           latitude={latitude}

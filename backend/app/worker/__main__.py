@@ -1,4 +1,4 @@
-"""Check readiness and process queued synthetic knowledge PDFs."""
+"""Check readiness, process queued synthetic PDFs and refresh opted-in farm forecasts."""
 
 import argparse
 import logging
@@ -12,6 +12,7 @@ from app.db.database import Database
 from app.modules.identity import models as identity_models  # noqa: F401
 from app.modules.knowledge.processing import process_one
 from app.modules.notifications import models as notification_models  # noqa: F401
+from app.modules.weather import scheduled
 
 logger = logging.getLogger("wagamaga.worker")
 
@@ -36,16 +37,16 @@ def main() -> int:
             if args.once:
                 logger.info("Worker database=%s", ready.status)
                 return 0 if ready.status == "ready" else 1
-            if (
-                settings.app_env != "production"
-                and ready.status == "ready"
-                and database.engine is not None
-            ):
+            if ready.status == "ready" and database.engine is not None:
+                if settings.app_env != "production":
+                    try:
+                        process_one(database.engine)
+                    except SQLAlchemyError, OSError, ValueError:
+                        logger.warning("PDF job could not be completed. The worker will retry.")
                 try:
-                    if process_one(database.engine):
-                        continue
+                    scheduled.process_one(database.engine, settings)
                 except SQLAlchemyError, OSError, ValueError:
-                    logger.warning("PDF job could not be completed. The worker will retry.")
+                    logger.warning("Scheduled weather could not be saved. The worker will retry.")
             stop.wait(2)
     finally:
         database.close()

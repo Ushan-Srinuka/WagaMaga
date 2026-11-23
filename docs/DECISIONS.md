@@ -301,6 +301,12 @@ Let the owner choose a precipitation threshold for each cultivation. Recheck pen
 
 Use `pg_dump` and `pg_restore` from the existing PostgreSQL/pgvector container so the tools match the database version. Seed the dedicated test database through the application integration test, restore to a temporary database and check restored data and grants before cleanup. Run the same drill in the backend workflow. [Testing guide](TESTING.md#chilli-questions-and-reliability)
 
+## D39: farm weather opt-in and cultivation guidance
+
+Use the existing worker and database for leased forecast checks. Owners opt in per farm and write rainfall thresholds per cultivation. A unique cultivation/date claim and the inbox entry commit with the forecast evidence. The owner continues to confirm individual date changes through the review flow.
+
+Use structured farmer-reported soil moisture and confirmed stage for the three contextual chilli questions. Source facts come from the existing attributed public reference set. Use only an explicit Anuradhapura location label and observations from the last 24 hours for irrigation context. Questions use local rules and ask for missing field evidence where a source cannot justify plot-specific advice.
+
 ## Recording an outcome
 
 For each resolved decision, record ID, date, status, context, chosen option, alternatives, consequences and affected documents. Keep superseded outcomes with their replacement link. Never mark a decision resolved just because Codex generated a suggestion.

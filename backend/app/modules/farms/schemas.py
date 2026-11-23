@@ -110,7 +110,14 @@ class FarmCreate(Input):
 class Patch(VersionCommand):
     @model_validator(mode="after")
     def required_values(self):
-        nullable = {"latitude", "longitude", "area_value", "area_unit", "soil_notes"}
+        nullable = {
+            "latitude",
+            "longitude",
+            "area_value",
+            "area_unit",
+            "soil_notes",
+            "soil_moisture",
+        }
         # Cultivation areas are required, unlike optional farm area.
         if isinstance(self, CultivationPatch):
             nullable -= {"area_value", "area_unit"}
@@ -150,14 +157,19 @@ class StageConfirmation(VersionCommand):
     stage: Stage
 
 
+SoilMoisture = Literal["dry", "moist", "waterlogged"]
+
+
 class ObservationCreate(Input):
     observed_at: ObservedAt
     notes: Notes
+    soil_moisture: SoilMoisture | None = None
 
 
 class ObservationPatch(Patch):
     observed_at: ObservedAt | None = None
     notes: Notes | None = None
+    soil_moisture: SoilMoisture | None = None
 
 
 class Paging(BaseModel):
@@ -256,6 +268,7 @@ class ObservationSnapshot(RecordOut):
     recorded_by: UUID
     observed_at: datetime
     notes: str
+    soil_moisture: SoilMoisture | None = None
 
 
 class ObservationOut(ObservationSnapshot):

@@ -123,6 +123,7 @@ function History({
                   : [
                       ['observed_at', 'Observed at'],
                       ['notes', 'Notes'],
+                      ['soil_moisture', 'Soil moisture'],
                       ['recorded_by', 'Originally recorded by'],
                     ]
             function value(key: string) {

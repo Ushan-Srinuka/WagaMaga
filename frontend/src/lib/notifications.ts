@@ -5,6 +5,7 @@ export type Notification = {
     | 'account_reenabled'
     | 'password_changed'
     | 'support_updated'
+    | 'weather_review'
   title: string
   body: string
   created_at: string

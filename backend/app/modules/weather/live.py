@@ -1,4 +1,4 @@
-"""Owner-only manual forecast retrieval and freshness policy."""
+"""Owner-only forecast retrieval and shared weather freshness policy."""
 
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -154,6 +154,13 @@ def refresh(db, ids, farm_id, cultivation_id, settings, on_provider_call):
             409, "WEATHER_CONTEXT_CHANGED", "The forecast area or date changed. Refresh again."
         )
 
+    cached, fresh = examine(db, farm, fetched_at)
+    if not fresh or cached.fetched_at < stamp:
+        store_forecast(db, farm, area, fetched_at, days)
+    return present(db, settings, farm, cultivation, fetched_at)
+
+
+def store_forecast(db, farm, area, fetched_at, days):
     snapshot = db.get(FarmForecast, farm.id, populate_existing=True)
     if snapshot is None:
         snapshot = FarmForecast(farm_id=farm.id)
@@ -165,4 +172,3 @@ def refresh(db, ids, farm_id, cultivation_id, settings, on_provider_call):
     snapshot.fetched_at = fetched_at
     snapshot.days = [day.model_dump(mode="json") for day in days]
     db.flush()
-    return present(db, settings, farm, cultivation, fetched_at)

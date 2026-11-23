@@ -9,7 +9,8 @@ from app.modules.farms import plans, service, tasks
 from app.modules.farms import schemas as dto
 from app.modules.identity.dependencies import DB, Principal, browser_write, limiter
 from app.modules.identity.service import Limiter
-from app.modules.weather import alerts, reschedules
+from app.modules.knowledge import cultivation_guidance
+from app.modules.weather import alerts, reschedules, scheduled
 from app.modules.weather import demo as weather_demo
 from app.modules.weather import live as live_weather
 
@@ -44,6 +45,8 @@ TASKS = "/farms/{farm_id}/cultivations/{cultivation_id}/tasks"
 PLANS = "/farms/{farm_id}/cultivations/{cultivation_id}/task-plans"
 WEATHER = "/farms/{farm_id}/cultivations/{cultivation_id}/weather"
 ALERTS = WEATHER + "/alerts"
+WEATHER_SCHEDULE = "/farms/{farm_id}/weather-schedule"
+GUIDANCE = "/farms/{farm_id}/cultivations/{cultivation_id}/chilli-guidance"
 PlanKey = Annotated[UUID, Header(alias="Idempotency-Key")]
 
 
@@ -65,6 +68,33 @@ def create_farm(data: dto.FarmCreate, request: Request, db: DB, ids: Principal):
 @router.get("/farms/{farm_id}", response_model=dto.FarmOut)
 def farm(farm_id: UUID, db: DB, ids: Principal):
     return service.get_farm(db, ids, farm_id)
+
+
+@router.get(WEATHER_SCHEDULE, response_model=scheduled.ScheduleOut)
+def weather_schedule(farm_id: UUID, request: Request, db: DB, ids: Principal):
+    return scheduled.get(db, ids, farm_id, request.app.state.settings)
+
+
+@router.post(GUIDANCE, response_model=cultivation_guidance.GuidanceAnswer, dependencies=write)
+def ask_cultivation_guidance(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    data: cultivation_guidance.GuidanceQuestion,
+    db: DB,
+    ids: Principal,
+):
+    return cultivation_guidance.ask(db, ids, farm_id, cultivation_id, data)
+
+
+@router.patch(WEATHER_SCHEDULE, response_model=scheduled.ScheduleOut, dependencies=write)
+def save_weather_schedule(
+    farm_id: UUID,
+    data: scheduled.ScheduleEdit,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return scheduled.save(db, ids, farm_id, request.app.state.settings, data)
 
 
 @router.patch("/farms/{farm_id}", response_model=dto.FarmOut, dependencies=write)

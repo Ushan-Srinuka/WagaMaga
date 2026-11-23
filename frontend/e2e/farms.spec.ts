@@ -386,10 +386,78 @@ test('farmer sets a weather alert and confirms a reviewed task date', async ({
   await expect(
     task.getByText(`Due ${replacement}`, { exact: true }),
   ).toBeVisible()
+  await weather
+    .getByRole('button', { name: 'Turn on automatic alerts' })
+    .click()
+  await expect(weather.getByText('On for this farm')).toBeVisible()
+  await page.reload()
+  await expect(weather.getByText('On for this farm')).toBeVisible()
+  await weather
+    .getByRole('button', { name: 'Turn off automatic alerts' })
+    .click()
+  await expect(weather.getByText('Off for this farm')).toBeVisible()
   await page.getByRole('link', { name: 'Cultivation history' }).click()
   await expect(
     page.getByRole('region', { name: 'Plan decisions' }),
   ).toContainText(`Accepted · ${due} → ${replacement}`)
+  await fit(page)
+})
+
+test('farmer reads cited cultivation guidance with a saved soil moisture observation', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic chilli guidance farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const farmPath = cultivation.split('/cultivations/')[0]
+  expect(
+    (
+      await request.patch(root + farmPath, {
+        headers: owner.headers,
+        data: {
+          location: 'Synthetic village, Anuradhapura District, Sri Lanka',
+          expected_version: 1,
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await request.post(root + cultivation + '/stage-confirmation', {
+        headers: owner.headers,
+        data: { stage: 'Seedling', expected_version: 1 },
+      })
+    ).ok(),
+  ).toBe(true)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const guidance = page.getByRole('region', { name: 'Chilli growing help' })
+  const check = guidance.getByRole('button', { name: 'Check guidance' })
+  const answer = guidance.getByRole('article', {
+    name: 'Cultivation guidance answer',
+  })
+  await check.click()
+  await expect(answer).toContainText(
+    'Record a recent soil moisture observation',
+  )
+  const observations = page.getByRole('region', { name: 'Observations' })
+  await observations.getByRole('button', { name: 'Add observation' }).click()
+  await observations.getByRole('button', { name: 'Use current time' }).click()
+  await observations
+    .getByLabel('Observation notes')
+    .fill('Synthetic field reading')
+  await observations.getByLabel('Soil moisture (optional)').selectOption('dry')
+  await observations.getByRole('button', { name: 'Record observation' }).click()
+  await expect(observations.getByText('Soil moisture: dry')).toBeVisible()
+  await expect(answer).toHaveCount(0)
+  await check.click()
+  await expect(answer).toContainText('Recorded crop stage: Seedling')
+  await expect(answer).toContainText('Recorded soil moisture: dry')
+  await expect(
+    answer.getByRole('link', {
+      name: /Department of Agriculture · Irrigation/,
+    }),
+  ).toHaveAttribute('href', 'https://doa.gov.lk/field-crops-chilli-si/')
   await fit(page)
 })
 

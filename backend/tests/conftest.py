@@ -77,6 +77,7 @@ def accounts(identity_engines):
                 "knowledge_source_pdfs, knowledge_demo_decisions, "
                 "knowledge_demo_versions, "
                 "support_events, support_messages, support_tickets, "
+                "weather_refresh_schedules, weather_review_notices, "
                 "weather_task_alerts, weather_alert_rules, "
                 "task_plan_decisions, task_plans, farm_task_events, farm_tasks, "
                 "farm_forecasts, farm_deletions, farm_audit_events, "

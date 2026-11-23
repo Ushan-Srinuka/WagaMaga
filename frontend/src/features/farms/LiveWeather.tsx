@@ -5,6 +5,76 @@ import type { FarmWeather } from '../../lib/farms'
 import { farmWrite, timestamp } from '../../lib/farms'
 import { useRecord, useSave } from './record-hooks'
 
+type WeatherSchedule = {
+  enabled: boolean
+  version: number
+  can_enable: boolean
+  can_disable: boolean
+}
+
+function AutomaticAlerts({ path }: { path: string }) {
+  const record = useRecord<WeatherSchedule>(path)
+  const save = useSave()
+  const setting = record.data
+
+  return (
+    <div className="record-inset">
+      <h4>Automatic weather alerts</h4>
+      {record.loading && <p role="status">Loading automatic alert setting…</p>}
+      {record.error !== undefined && (
+        <button type="button" onClick={record.reload}>
+          Retry loading automatic alerts
+        </button>
+      )}
+      {setting && (
+        <>
+          <p role="status">
+            {setting.enabled ? 'On for this farm' : 'Off for this farm'}
+          </p>
+          <p className="muted">
+            When on, WagaMaga shares this farm’s approximate coordinates with
+            Open-Meteo to check pending tasks with a saved rainfall threshold.
+            Matching rain sends an in-app notice. You decide whether to change a
+            task date.
+          </p>
+          {(setting.can_enable || setting.can_disable) && (
+            <button
+              type="button"
+              disabled={save.busy || save.blocked}
+              onClick={() =>
+                void save.run(
+                  () =>
+                    farmWrite<WeatherSchedule>(path, 'PATCH', {
+                      enabled: !setting.enabled,
+                      expected_version: setting.version,
+                    }),
+                  record.replace,
+                )
+              }
+            >
+              {setting.enabled
+                ? 'Turn off automatic alerts'
+                : 'Turn on automatic alerts'}
+            </button>
+          )}
+        </>
+      )}
+      {save.error && <Notice message={save.error} />}
+      {save.blocked && (
+        <button
+          type="button"
+          onClick={() => {
+            save.reset()
+            record.reload()
+          }}
+        >
+          Reload automatic alert setting
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function LiveWeather({
   record,
   path,
@@ -142,6 +212,7 @@ export default function LiveWeather({
               Check saved forecast
             </button>
           )}
+          <AutomaticAlerts path={farmPath + '/weather-schedule'} />
         </>
       )}
     </section>

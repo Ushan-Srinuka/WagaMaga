@@ -98,7 +98,7 @@ Exit criteria: AT01-AT12 evidence; at least 30 labelled evaluation questions; Re
 
 Accepted for future planning on 18 November 2026, not implemented or authorized as the current coding task. The [UI direction](UI_DESIGN.md#planned-farmer-experience-planner-supported-by-chat) makes the planner the farmer's main workspace and chat its explanation/proposal assistant. Existing seven-day bounds, evidence requirements, advisor review, farmer acceptance and execution safeguards remain in scope under FR21-FR30; they are not new features to defer.
 
-Manual cultivation tasks are implemented locally under FR10 and FR30. The suggested plan demo covers one fixed recordkeeping addition under FR21–FR24 and FR26–FR29. FR32 includes labelled sample rain and a manual live Open-Meteo forecast. The weather review slice adds owner-set precipitation thresholds, persistent alerts in cultivation, and a confirmed date change with an immutable action, weather evidence and atomic task history. Automatic polling, inbox reminders, agronomic thresholds and advisor clearance remain future work.
+Manual cultivation tasks are implemented locally under FR10 and FR30. The suggested plan demo covers one fixed recordkeeping addition under FR21–FR24 and FR26–FR29. FR32 includes labelled sample rain and live Open-Meteo forecasts. The weather review slice includes owner-set precipitation thresholds, opt-in forecast checks, private inbox notices, persistent alerts in cultivation, and a confirmed date change with an immutable action, weather evidence and atomic task history. Agronomic thresholds and advisor clearance remain future work.
 
 ### Combined cultivation diary
 

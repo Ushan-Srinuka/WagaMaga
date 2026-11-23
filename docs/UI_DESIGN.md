@@ -172,6 +172,10 @@ The landing page includes a simple sage panel immediately above the footer, with
 
 The signed-in **Chilli questions** screen starts with nursery site, irrigation and soil testing questions, followed by published study questions. It accepts typed variants. Practical answers show the relevant Department of Agriculture section and link to the public Sinhala crop page. Research answers show the study attribution, journal and PDF page, DOI and license. The selection label identifies Gemini only when the server verified its choice against the source summary. **Chilli farm guidance** opens the separate gated advice screen.
 
+**Chilli guidance for this cultivation** appears on active chilli cultivation records. It offers three questions and shows the confirmed crop stage, a recent recorded irrigation observation when applicable, the cited source and the checks the record cannot answer. The observation editor includes optional soil moisture and keeps it in private history.
+
+**Automatic weather alerts** sits in the cultivation forecast panel and applies to the whole farm. The control explains the sharing of approximate coordinates before opt-in. The owner can turn it off from the same panel. The notification inbox links to My Farms so the owner can open the cultivation and review any date change.
+
 Administrators can open **Knowledge Sources** in the workspace menu. Each synthetic guide card displays the saved status, version identifier, content and checksum. Review, publish and withdraw actions require confirmation.
 
 The PDF form accepts a synthetic document and explains size, page and text limits. Queued versions explain how to refresh. A failed extraction shows the reason where available. A ready version opens a plain text preview with PDF page numbers.

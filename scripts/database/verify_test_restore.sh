@@ -37,6 +37,9 @@ SELECT 'seeded=' || (EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector'
    AND (SELECT count(*) FROM farm_tasks) > 0
    AND (SELECT count(*) FROM farm_task_events) > 1
    AND (SELECT count(*) FROM farm_forecasts) > 0
+   AND (SELECT count(*) FROM weather_refresh_schedules WHERE enabled) > 0
+   AND (SELECT count(*) FROM weather_review_notices) > 0
+   AND (SELECT count(*) FROM notifications WHERE event_type = 'weather_review') > 0
    AND EXISTS (
        SELECT 1 FROM task_plan_decisions d
        JOIN task_plans p ON (p.id, p.version, p.action_hash) =
@@ -47,6 +50,7 @@ SELECT 'seeded=' || (EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector'
 
 SELECT 'protected=' || (has_table_privilege(:'app_role', 'farm_task_events', 'SELECT')
    AND NOT has_table_privilege(:'app_role', 'farm_task_events', 'UPDATE')
+   AND NOT has_table_privilege(:'app_role', 'weather_review_notices', 'UPDATE')
    AND NOT has_table_privilege(:'app_role', 'task_plan_decisions', 'DELETE'))::text;
 
 SELECT 'farm:' || md5(coalesce(string_agg(to_jsonb(f)::text, ',' ORDER BY id), '')) FROM farms f
@@ -59,6 +63,12 @@ UNION ALL SELECT 'rule:' || md5(string_agg(to_jsonb(r)::text, ',' ORDER BY culti
     FROM weather_alert_rules r
 UNION ALL SELECT 'alert:' || md5(string_agg(to_jsonb(a)::text, ',' ORDER BY task_id, due_date))
     FROM weather_task_alerts a
+UNION ALL SELECT 'schedule:' || md5(string_agg(to_jsonb(s)::text, ',' ORDER BY farm_id))
+    FROM weather_refresh_schedules s
+UNION ALL SELECT 'weather-review:' || md5(string_agg(to_jsonb(r)::text, ',' ORDER BY cultivation_id, due_date))
+    FROM weather_review_notices r
+UNION ALL SELECT 'notification:' || md5(string_agg(to_jsonb(n)::text, ',' ORDER BY id))
+    FROM notifications n WHERE event_type = 'weather_review'
 UNION ALL SELECT 'plan:' || md5(string_agg(to_jsonb(p)::text, ',' ORDER BY id)) FROM task_plans p
 UNION ALL SELECT 'decision:' || md5(string_agg(to_jsonb(d)::text, ',' ORDER BY plan_id))
     FROM task_plan_decisions d

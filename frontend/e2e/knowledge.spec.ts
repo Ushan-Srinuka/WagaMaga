@@ -265,6 +265,7 @@ test('farmer searches reviewed excerpts locally', async ({
   page,
   request,
   context,
+  browser,
 }) => {
   const web = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
   const login = await request.post(`${apiRoot}/auth/login`, {
@@ -303,13 +304,34 @@ test('farmer searches reviewed excerpts locally', async ({
   )
   const pdf = await document.pdf()
   await document.close()
-  const uploaded = await request.post(`${root}/sources/pdf`, {
-    headers: { ...admin, 'Content-Type': 'application/pdf' },
-    data: pdf,
-  })
-  expect(uploaded.status()).toBe(201)
-  const { id } = await uploaded.json()
-  await processQueuedPdfs()
+  const { id } =
+    await test.step('Upload the PDF using a separate admin browser session', async () => {
+      const adminPage = await browser.newPage({ baseURL: webOrigin })
+      try {
+        await openKnowledge(adminPage)
+        await adminPage.getByLabel('Synthetic PDF').setInputFiles({
+          name: 'local-reviewed-excerpts.pdf',
+          mimeType: 'application/pdf',
+          buffer: pdf,
+        })
+        const uploaded = adminPage.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+              '/api/v1/admin/knowledge/sources/pdf' &&
+            response.request().method() === 'POST',
+          { timeout: 12_000 },
+        )
+        await adminPage
+          .getByRole('button', { name: 'Upload PDF', exact: true })
+          .click()
+        const response = await uploaded
+        expect(response.status()).toBe(201)
+        return await response.json()
+      } finally {
+        await adminPage.close()
+      }
+    })
+  await test.step('Extract the uploaded PDF', processQueuedPdfs)
 
   await openTestFarmer(page, request)
   await page.goto('/knowledge/chilli')

@@ -80,6 +80,10 @@ Refresh calls the provider before taking write locks. The service acquires the a
 
 Migration `0019_weather_task_review` adds `weather_alert_rules` (one versioned setting per cultivation) and `weather_task_alerts` (one row per task and due date). A repeated check refreshes the stored evidence rather than adding another row. Rules and alert state can change under restricted column grants. Current reads require a pending task, active parent, qualifying threshold and matching fresh forecast.
 
+Migration `0020_scheduled_weather` adds one `weather_refresh_schedules` row per opted-in farm, with version, next due time and recoverable lease. `weather_review_notices` claims one notification per cultivation and local due date, even when multiple tasks match. The claim, alert snapshot and `weather_review` inbox entry commit together. The application role can insert notice claims and cannot edit or delete them.
+
+Migration `0021_guidance_observations` adds nullable soil moisture to `farm_observations`. Observation history allows this field only with the same three enumerated values. Revisions without a soil moisture value retain the original snapshot shape and historical rows stay readable. Downgrade refuses to discard recorded values or their history.
+
 Weather date proposals reuse the append-only `task_plans` and `task_plan_decisions` tables. A date proposal stores the task ID/version, original and proposed dates, the applied threshold and a normalized snapshot of the forecast evidence. Each accepted decision points to a unique task event and version through a composite foreign key. Existing accepted example plans are backfilled to their original task creation event. Downgrade refuses while a weather date proposal exists.
 
 - UUID primary keys, explicit foreign keys and UTC event timestamps.

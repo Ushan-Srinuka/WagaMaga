@@ -1,5 +1,18 @@
 # Testing strategy
 
+## Automatic weather and cultivation guidance
+
+With the local PostgreSQL/pgvector container running, check worker leases, opt-out, notice deduplication and private cultivation context from the repository root:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-scheduled-guidance'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py tests/integration/test_identity.py -k 'scheduled_weather or cultivation_guidance or live_weather or concurrent_registration_and_first_admin_bootstrap'
+```
+
+The eight targeted checks passed locally. The fixture-backed provider exercises outage, lease recovery, recipient privacy, task date preservation and opt-out during a request. The guidance check covers cited answers for each topic, current and stale observation handling, revision history, and foreign-owner denial. The synthetic restore drill below also passed with an enabled schedule, notice claim and weather inbox entry. Alembic drift, worker readiness, Ruff, frontend tests, lint, formatting and build passed locally.
+
+With the [isolated Edge settings](DEVELOPMENT.md), run the six desktop/mobile cases with `npm.cmd --prefix frontend run test:e2e -- farms.spec.ts knowledge.spec.ts --grep 'farmer (sets a weather alert|reads cited cultivation guidance|searches reviewed excerpts)'`. They exercise the saved opt-in, unchanged review and confirmation flow, irrigation context after a saved observation, and the reviewed-excerpt upload/browser path.
+
 ## Chilli questions and reliability
 
 The 23 November 2026 local run passed 319 backend tests with PostgreSQL/pgvector and 79 frontend tests. Coverage includes all seven cited questions, unsupported plot-specific requests, the local answer during a simulated Gemini outage, saved forecast preservation during a simulated Open-Meteo outage, and owner-only access to private farm records. Ruff, frontend lint, Prettier, the production build, Alembic drift and worker readiness checks passed. With the [isolated Edge settings](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e` passed 50 desktop and mobile journeys, including both versions of the chilli question journey. The two opt-in live Gemini journeys were skipped.

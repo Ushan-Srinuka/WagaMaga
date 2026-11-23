@@ -26,8 +26,15 @@ export default function AccountShell() {
     if (!user) return
     loadUnread()
     window.addEventListener('notifications-updated', loadUnread)
+    const timer =
+      user.role === 'farmer'
+        ? window.setInterval(() => {
+            if (document.visibilityState === 'visible') loadUnread()
+          }, 60_000)
+        : undefined
     return () => {
       active = false
+      window.clearInterval(timer)
       window.removeEventListener('notifications-updated', loadUnread)
     }
   }, [user])

@@ -14,6 +14,8 @@ def record_snapshot(record: Farm | Cultivation | FarmObservation) -> dict:
     result = {}
     for column in record.__table__.columns:
         value = getattr(record, column.name)
+        if column.name == "soil_moisture" and value is None:
+            continue
         if isinstance(value, (UUID, Decimal)):
             value = str(value)
         elif isinstance(value, (date, datetime)):

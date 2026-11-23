@@ -10,6 +10,7 @@ import type {
   Farm,
   Observation,
   Page,
+  SoilMoisture,
 } from '../../lib/farms'
 import { area, cropName, farmWrite, timestamp } from '../../lib/farms'
 import {
@@ -21,6 +22,7 @@ import {
   SaveError,
   TextArea,
 } from './RecordUI'
+import CultivationGuidance from './CultivationGuidance'
 import { useRecord, useSave } from './record-hooks'
 import TaskPanel from './TaskPanel'
 
@@ -48,6 +50,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
   const [archive, setArchive] = useState(false)
   const [stage, setStage] = useState('')
   const [notice, setNotice] = useState('')
+  const [guidanceRevision, setGuidanceRevision] = useState(0)
   const save = useSave()
   function reload() {
     setEditing(false)
@@ -55,6 +58,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
     setStage('')
     setNotice('')
     setObservationDraft(false)
+    setGuidanceRevision((revision) => revision + 1)
     save.reset()
     farm.reload()
     record.reload()
@@ -101,14 +105,11 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
       >
         {farm.data.name} · Planting date {cultivation.planting_date}
       </Intro>
-      {isChilli && (
-        <section className="panel" aria-label="Chilli growing help">
-          <h2>Need help with chilli growing?</h2>
-          <p>Find answers from published chilli studies.</p>
-          <Link className="record-link primary" to="/knowledge/chilli">
-            Ask a chilli question
-          </Link>
-        </section>
+      {isChilli && !cultivation.effective_archived && (
+        <CultivationGuidance
+          key={`${farm.data.version}:${cultivation.version}:${guidanceRevision}`}
+          path={path + '/chilli-guidance'}
+        />
       )}
       {notice && <Notice success message={notice} />}
       {cultivation.effective_archived && (
@@ -261,6 +262,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
         cultivation={cultivation}
         canEdit={!editing && !stage && !save.busy && !save.blocked}
         onDraft={setObservationDraft}
+        onSaved={() => setGuidanceRevision((revision) => revision + 1)}
         startAdding={startObservation && !cultivation.effective_archived}
       />
       {archive && (
@@ -298,12 +300,14 @@ function Observations({
   cultivation,
   canEdit,
   onDraft,
+  onSaved,
   startAdding = false,
 }: {
   farm: Farm
   cultivation: Cultivation
   canEdit: boolean
   onDraft: (open: boolean) => void
+  onSaved: () => void
   startAdding?: boolean
 }) {
   const [page, setPage] = useState(1)
@@ -377,6 +381,7 @@ function Observations({
               setEditing(null)
               onDraft(false)
               list.reload()
+              onSaved()
               setNotice('Observation saved.')
             }}
           />
@@ -440,6 +445,9 @@ function Observations({
                     <span className="muted">{farm.timezone}</span>
                   </div>
                   <p className="record-note">{item.notes}</p>
+                  {item.soil_moisture && (
+                    <p>Soil moisture: {item.soil_moisture}</p>
+                  )}
                   <div className="button-row">
                     {!cultivation.effective_archived && (
                       <button
@@ -494,6 +502,9 @@ function ObservationForm({
   const initialTime = record ? deviceTime(record.observed_at) : ''
   const [observed, setObserved] = useState(initialTime)
   const [notes, setNotes] = useState(record?.notes ?? '')
+  const [soilMoisture, setSoilMoisture] = useState<SoilMoisture | ''>(
+    record?.soil_moisture ?? '',
+  )
   const [invalid, setInvalid] = useState('')
   const save = useSave()
   function submit(event: FormEvent) {
@@ -518,6 +529,9 @@ function ObservationForm({
     const body = {
       observed_at: instant,
       notes: notes.trim(),
+      ...(soilMoisture || record?.soil_moisture
+        ? { soil_moisture: soilMoisture || null }
+        : {}),
       ...(record ? { expected_version: record.version } : {}),
     }
     onBusy(true)
@@ -559,6 +573,23 @@ function ObservationForm({
           change={setNotes}
           maxLength={4000}
         />
+        <div className="field">
+          <label htmlFor="observation-soil-moisture">
+            Soil moisture (optional)
+          </label>
+          <select
+            id="observation-soil-moisture"
+            value={soilMoisture}
+            onChange={(event) =>
+              setSoilMoisture(event.target.value as SoilMoisture | '')
+            }
+          >
+            <option value="">Not recorded</option>
+            <option value="dry">Dry</option>
+            <option value="moist">Moist</option>
+            <option value="waterlogged">Waterlogged</option>
+          </select>
+        </div>
         {invalid && <Notice message={invalid} />}
         <button className="primary" disabled={save.busy || save.blocked}>
           {save.busy

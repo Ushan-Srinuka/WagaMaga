@@ -43,11 +43,13 @@ export type Cultivation = {
   created_at: string
   updated_at: string
 }
+export type SoilMoisture = 'dry' | 'moist' | 'waterlogged'
 export type Observation = {
   id: string
   cultivation_id: string
   observed_at: string
   notes: string
+  soil_moisture?: SoilMoisture | null
   recorded_by: string
   version: number
   created_at: string

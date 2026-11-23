@@ -4,7 +4,18 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, Numeric, String
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -69,3 +80,38 @@ class WeatherTaskAlert(Base):
     rule_version: Mapped[int] = mapped_column(Integer)
     forecast_fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     precipitation_mm: Mapped[float] = mapped_column(Float)
+
+
+class WeatherRefreshSchedule(Base):
+    __tablename__ = "weather_refresh_schedules"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="weather_refresh_schedules_version"),
+        CheckConstraint(
+            "(lease_token IS NULL) = (lease_until IS NULL)",
+            name="weather_refresh_schedules_lease",
+        ),
+        Index(
+            "ix_weather_refresh_schedules_due",
+            "next_refresh_at",
+            "farm_id",
+            postgresql_where=text("enabled"),
+        ),
+    )
+
+    farm_id: Mapped[UUID] = mapped_column(
+        ForeignKey("farms.id", ondelete="RESTRICT"), primary_key=True
+    )
+    enabled: Mapped[bool]
+    version: Mapped[int]
+    next_refresh_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[UUID | None]
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WeatherReviewNotice(Base):
+    __tablename__ = "weather_review_notices"
+
+    cultivation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cultivations.id", ondelete="RESTRICT"), primary_key=True
+    )
+    due_date: Mapped[date] = mapped_column(Date, primary_key=True)

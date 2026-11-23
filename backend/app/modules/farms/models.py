@@ -136,10 +136,14 @@ class FarmObservation(RecordColumns, Base):
             name="farm_observations_notes",
         ),
         CheckConstraint("isfinite(observed_at)", name="farm_observations_observed_at"),
+        CheckConstraint(
+            "soil_moisture IN ('dry','moist','waterlogged')", name="farm_observations_soil_moisture"
+        ),
         Index("ix_observations_cultivation_observed", "cultivation_id", "observed_at", "id"),
     )
 
     cultivation_id: Mapped[UUID] = mapped_column(ForeignKey("cultivations.id", ondelete="RESTRICT"))
+    soil_moisture: Mapped[str | None] = mapped_column(String(12))
     recorded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str] = mapped_column(Text)
@@ -277,12 +281,19 @@ class RevisionColumns:
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-def snapshot_check(parent: str, record: type[Base]) -> str:
-    # Exact top-level keys prevent an arbitrary provider/client payload becoming history.
+def snapshot_check(parent: str, record: type[Base], *, optional: str | None = None) -> str:
+    # Explicit top-level keys prevent untrusted extra fields from entering history.
     keys = ",".join(f"'{column.name}'" for column in record.__table__.columns)
+    required = (
+        ",".join(
+            f"'{column.name}'" for column in record.__table__.columns if column.name != optional
+        )
+        if optional
+        else keys
+    )
     return (
         "jsonb_typeof(snapshot) = 'object' "
-        f"AND snapshot ?& ARRAY[{keys}] "
+        f"AND snapshot ?& ARRAY[{required}] "
         f"AND snapshot - ARRAY[{keys}] = '{{}}'::jsonb "
         f"AND (snapshot->>'id' = {parent}::text) IS TRUE "
         "AND (snapshot->>'version' = version::text) IS TRUE"
@@ -319,7 +330,10 @@ class ObservationRevision(RevisionColumns, Base):
         UniqueConstraint("observation_id", "version", name="uq_observation_revisions_version"),
         CheckConstraint("version > 0", name="observation_revisions_version"),
         CheckConstraint(
-            snapshot_check("observation_id", FarmObservation), name="observation_revisions_snapshot"
+            snapshot_check("observation_id", FarmObservation, optional="soil_moisture")
+            + " AND (NOT (snapshot ? 'soil_moisture') OR (snapshot->>'soil_moisture' "
+            "IN ('dry','moist','waterlogged')) IS TRUE)",
+            name="observation_revisions_snapshot",
         ),
     )
 
