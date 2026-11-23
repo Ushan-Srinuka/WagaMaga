@@ -10,7 +10,9 @@ Reuse UM1 accounts/live sessions, React, FastAPI's modular monolith, SQLAlchemy/
 
 Included journey: sign in as a farmer, create a farm, add a cultivation, record observations, edit details, explicitly confirm a known stage, archive a cultivation/farm and read its history; restore an archived farm or delete it from the workspace with retained historical records.
 
-Excluded: tasks/calendars, proposals/execution, AI/automatic stage estimation, weather, uploads, advisor sharing, crop administration, ownership transfers, cultivation restoration/deletion, permanent data erasure and farm notifications.
+Manual tasks were added separately under FR10 and FR30. A farmer can add and edit pending tasks, complete or cancel them, and view their task history on the cultivation history page. See the [manual task API contract](API.md#manual-cultivation-tasks).
+
+Excluded from the Farm Records slice: calendar views, proposals/execution, AI/automatic stage estimation, weather, uploads, advisor sharing, crop administration, ownership transfers, cultivation restoration/deletion, permanent data erasure and farm notifications.
 
 ## Requirement traceability
 
@@ -27,7 +29,8 @@ The [SRS](WagaMaga_AI_SRS.md) owns the identifiers and the [architecture](WagaMa
 | FR07 | Separate estimated and confirmed stages and provenance. Owner confirmation only here; case-scoped advisor confirmation deferred. |
 | FR08 | Timestamped observations with author/notes; edits preserve immutable revisions from first implementation. |
 | FR09 | Archives leave active lists, retain owner-readable history and block new activity. Later proposal execution must check farm and cultivation archive state. |
-| FR10 | Bounded, filtered farm/cultivation/observation lists; task ordering deferred. |
+| FR10 | Bounded, filtered farm, cultivation, observation and task lists. Tasks are ordered by local due date. |
+| FR30 | Owner creates and edits pending manual tasks, completes or cancels them and reads task history. |
 | DR01, DR03, DR05 | Foreign keys, explicit dates/timezone, versioned private history and append-only audit. Future decisions bind immutable context. |
 | DR04 | Synthetic local scope; retention/deletion periods remain open before real users. |
 

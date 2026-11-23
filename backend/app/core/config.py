@@ -1,15 +1,26 @@
 """Typed, provider-independent configuration shared by the API and worker."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from email_validator import EmailNotValidError, validate_email
-from pydantic import Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+class LocalNurseryReference(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    version_id: UUID
+    checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    page_number: int = Field(ge=1, le=100)
+    title: str = Field(min_length=1, max_length=120, pattern=r"^[^\x00]*$")
+    excerpt: str = Field(min_length=1, max_length=500, pattern=r"^[^\x00]*$")
+    english_translation: str = Field(min_length=1, max_length=500, pattern=r"^[^\x00]*$")
 
 
 class Settings(BaseSettings):
@@ -43,6 +54,23 @@ class Settings(BaseSettings):
     auth_registration_attempts: int = Field(default=5, ge=1, le=100)
     auth_refresh_attempts: int = Field(default=30, ge=1, le=1000)
     support_contact_email: str | None = None
+    open_meteo_api_key: SecretStr | None = None
+    open_meteo_noncommercial: bool = False
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^gemini-[a-z0-9.-]{1,70}$")
+    gemini_approved_pdf_checksums: set[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]] = Field(
+        default_factory=set
+    )
+    farmer_advisory_enabled: bool = False
+    local_nursery_reference: LocalNurseryReference | None = None
+    local_chilli_references: dict[Literal["CH-04", "CH-05"], LocalNurseryReference] = Field(
+        default_factory=dict
+    )
+
+    @field_validator("gemini_api_key", "open_meteo_api_key", mode="before")
+    @classmethod
+    def optional_provider_key(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("support_contact_email", mode="before")
     @classmethod

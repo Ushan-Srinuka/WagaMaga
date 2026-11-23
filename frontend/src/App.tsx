@@ -19,6 +19,10 @@ import CultivationPage from './features/farms/CultivationPage'
 import HistoryPage from './features/farms/HistoryPage'
 import HelpPage from './features/support/HelpPage'
 import OverviewPage from './features/reporting/OverviewPage'
+import KnowledgeSourcesPage from './features/knowledge/KnowledgeSourcesPage'
+import KnowledgeEvaluationPage from './features/knowledge/KnowledgeEvaluationPage'
+import KnowledgeScoringPage from './features/knowledge/KnowledgeScoringPage'
+import ChilliQuestionsPage from './features/knowledge/ChilliQuestionsPage'
 import {
   NewSupportPage,
   SupportDetailPage,
@@ -86,6 +90,23 @@ function ProductRoutes() {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route element={<Protected farmer />}>
+            <Route path="/knowledge/chilli" element={<ChilliQuestionsPage />} />
+            <Route
+              path="/knowledge/chilli/guidance"
+              element={<ChilliQuestionsPage key="guidance" mode="pilot" />}
+            />
+            {import.meta.env.DEV && (
+              <Route
+                path="/knowledge/chilli/demo"
+                element={<ChilliQuestionsPage key="demo" mode="demo" />}
+              />
+            )}
+            {import.meta.env.DEV && (
+              <Route
+                path="/knowledge/chilli/local"
+                element={<ChilliQuestionsPage key="local" mode="local" />}
+              />
+            )}
             <Route path="/support" element={<SupportListPage />} />
             <Route path="/support/new" element={<NewSupportPage />} />
             <Route path="/support/:ticketId" element={<SupportDetailPage />} />
@@ -113,6 +134,15 @@ function ProductRoutes() {
           </Route>
           <Route element={<Protected admin />}>
             <Route path="/admin/overview" element={<OverviewPage />} />
+            <Route path="/admin/knowledge" element={<KnowledgeSourcesPage />} />
+            <Route
+              path="/admin/knowledge/scoring"
+              element={<KnowledgeScoringPage />}
+            />
+            <Route
+              path="/admin/knowledge/evaluation"
+              element={<KnowledgeEvaluationPage />}
+            />
             <Route path="/admin/support" element={<SupportListPage admin />} />
             <Route
               path="/admin/support/:ticketId"

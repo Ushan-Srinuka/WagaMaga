@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 
-SCHEMA_REVISION = "0007_support"
+SCHEMA_REVISION = "0019_weather_task_review"
 
 
 @dataclass(frozen=True)

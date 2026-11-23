@@ -1,1 +1,1 @@
-"""Future knowledge domain module; no business features in M0."""
+"""Synthetic knowledge source administration."""

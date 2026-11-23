@@ -10,6 +10,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
+from app.db.database import SCHEMA_REVISION
 from app.main import create_app
 from app.modules.identity import service
 from app.modules.identity.models import AuditLog, RateLimit, RefreshSession, RefreshToken, User
@@ -775,9 +776,14 @@ def test_concurrent_registration_and_first_admin_bootstrap(accounts):
     with accounts[2].begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE support_events, support_messages, support_tickets, "
-                "farm_deletions, farm_audit_events, observation_revisions, "
-                "cultivation_revisions, "
+                "TRUNCATE knowledge_evaluation_runs, knowledge_evaluation_decisions, "
+                "knowledge_source_pdfs, knowledge_demo_decisions, "
+                "knowledge_demo_versions, "
+                "support_events, support_messages, support_tickets, "
+                "weather_task_alerts, weather_alert_rules, "
+                "task_plan_decisions, task_plans, farm_task_events, farm_tasks, "
+                "farm_forecasts, farm_deletions, farm_audit_events, "
+                "observation_revisions, cultivation_revisions, "
                 "farm_revisions, farm_observations, cultivations, farms, "
                 "notifications, audit_logs, refresh_tokens, refresh_sessions, "
                 "auth_rate_limits, users"
@@ -868,7 +874,7 @@ def test_migration_fresh_rebuild_and_metadata_privileges(identity_engines):
         command.downgrade(config, "base")
         command.upgrade(config, "head")
     with app_engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007_support"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == SCHEMA_REVISION
         assert connection.scalar(text("SELECT count(*) FROM users")) == 0
         assert connection.scalar(
             text("SELECT has_table_privilege(current_user, 'audit_logs', 'INSERT')")

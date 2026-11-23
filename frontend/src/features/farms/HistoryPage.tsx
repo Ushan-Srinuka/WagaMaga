@@ -4,6 +4,8 @@ import type { Crop, Cultivation, Farm, Page, Revision } from '../../lib/farms'
 import { area, cropName, timestamp } from '../../lib/farms'
 import { Archived, Intro, Pagination, ReadState } from './RecordUI'
 import { useRecord } from './record-hooks'
+import { TaskHistory } from './TaskPanel'
+import { PlanHistory } from './SuggestedPlans'
 
 export default function HistoryPage() {
   const { farmId = '', cultivationId, observationId } = useParams()
@@ -192,6 +194,15 @@ function History({
         )}
       </section>
       <Pagination result={history.data} page={page} change={change} />
+      {cultivationId && !observationId && (
+        <>
+          <TaskHistory path={cultivationPath + '/tasks'} timezone={timezone} />
+          <PlanHistory
+            path={cultivationPath + '/task-plans'}
+            timezone={timezone}
+          />
+        </>
+      )}
     </div>
   )
 }

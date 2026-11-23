@@ -73,9 +73,14 @@ def accounts(identity_engines):
     with owner.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE support_events, support_messages, support_tickets, "
-                "farm_deletions, farm_audit_events, observation_revisions, "
-                "cultivation_revisions, "
+                "TRUNCATE knowledge_evaluation_runs, knowledge_evaluation_decisions, "
+                "knowledge_source_pdfs, knowledge_demo_decisions, "
+                "knowledge_demo_versions, "
+                "support_events, support_messages, support_tickets, "
+                "weather_task_alerts, weather_alert_rules, "
+                "task_plan_decisions, task_plans, farm_task_events, farm_tasks, "
+                "farm_forecasts, farm_deletions, farm_audit_events, "
+                "observation_revisions, cultivation_revisions, "
                 "farm_revisions, farm_observations, cultivations, farms, "
                 "notifications, audit_logs, refresh_tokens, refresh_sessions, "
                 "auth_rate_limits, users"

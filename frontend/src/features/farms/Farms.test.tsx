@@ -81,6 +81,33 @@ function reads(path: string): unknown {
   if (route === '/farms/farm-one') return farm
   if (route === '/farms/farm-one/cultivations') return page([cultivation])
   if (route === '/farms/farm-one/cultivations/cult-one') return cultivation
+  if (route === '/farms/farm-one/cultivations/cult-one/tasks') return page([])
+  if (route === '/farms/farm-one/cultivations/cult-one/task-plans')
+    return { plan: null }
+  if (route === '/farms/farm-one/cultivations/cult-one/weather')
+    return {
+      status: 'needs_coordinates',
+      location: farm.location,
+      timezone: farm.timezone,
+      can_refresh: false,
+      forecast: null,
+    }
+  if (route === '/farms/farm-one/cultivations/cult-one/weather/alerts')
+    return {
+      ...page([]),
+      rule: { threshold_mm: null, version: 0 },
+      can_edit: true,
+      forecast_fresh: false,
+    }
+  if (route === '/farms/farm-one/cultivations/cult-one/demo-weather')
+    return {
+      source: 'fixture',
+      location: farm.location,
+      timezone: farm.timezone,
+      forecast_date: '2099-01-01',
+      rainfall_mm: 18,
+      review_due_on: '2099-01-01',
+    }
   if (route === '/cultivations/cult-one/observations')
     return page([observation])
   throw new Error(`Unexpected synthetic request: ${path}`)
@@ -126,6 +153,25 @@ function cultPage(query = '') {
     `/farms/farm-one/cultivations/cult-one${query}`,
   )
 }
+
+it('keeps task editing available when the demo forecast cannot load', async () => {
+  handle = (path) => {
+    if (path.endsWith('/demo-weather')) throw new ApiError(503, 'Unavailable')
+    return reads(path)
+  }
+  cultPage()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Show demo weather' }),
+  )
+  expect(await screen.findByText('Demo weather is unavailable.')).toBeVisible()
+  const addTask = screen.getByRole('button', { name: 'Add task' })
+  await waitFor(() => expect(addTask).toBeEnabled())
+  fireEvent.click(addTask)
+  expect(screen.getByLabelText('Task title')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Review this task' }),
+  ).not.toBeInTheDocument()
+})
 
 it('guides a farmer with no active farms without inventing setup progress', async () => {
   handle = () => page([])
@@ -578,6 +624,13 @@ it('keeps archived cultivation details and history readable without write contro
   ).toBeInTheDocument()
   expect(await screen.findByText(observation.notes)).toBeInTheDocument()
   expect(document.querySelector('.record-note b')).toBeNull()
+})
+
+it('opens published chilli research from a chilli cultivation record', async () => {
+  cultPage()
+  expect(
+    await screen.findByRole('link', { name: 'Ask a chilli question' }),
+  ).toHaveAttribute('href', '/knowledge/chilli')
 })
 
 it('keeps observation drafts separate from parent edits and preserves timestamp precision', async () => {

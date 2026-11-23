@@ -187,6 +187,27 @@ class ObservationQuery(Paging):
         return self
 
 
+TaskStatus = Literal["pending", "completed", "cancelled"]
+TaskOutcome = Literal["completed", "cancelled"]
+
+
+class TaskQuery(Paging):
+    status: TaskStatus | Literal["all"] = "pending"
+
+
+class TaskCreate(Input):
+    title: Name
+    due_date: LocalDate
+
+
+class TaskEdit(TaskCreate, VersionCommand):
+    pass
+
+
+class TaskTransition(VersionCommand):
+    status: TaskOutcome
+
+
 class RecordOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -239,6 +260,69 @@ class ObservationSnapshot(RecordOut):
 
 class ObservationOut(ObservationSnapshot):
     effective_archived: bool = False
+
+
+class TaskOut(RecordOut):
+    cultivation_id: UUID
+    title: str
+    due_date: date
+    status: TaskStatus
+
+
+class TaskEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    task_id: UUID
+    version: int
+    title: str
+    due_date: date
+    action: Literal["created", "edited", "completed", "cancelled"]
+    occurred_at: datetime
+
+
+PlanOutcome = Literal["accepted", "rejected"]
+
+
+class PlanDecision(VersionCommand):
+    action_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    outcome: PlanOutcome
+
+
+class PlanDecisionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    plan_id: UUID
+    plan_version: int
+    action_hash: str
+    outcome: PlanOutcome
+    task_id: UUID | None
+    task_version: int | None
+    decided_at: datetime
+
+
+class PlanOut(BaseModel):
+    id: UUID
+    version: int
+    action_type: Literal["create_task"]
+    action_hash: str
+    title: str
+    due_date: date
+    evidence_text: str
+    expires_at: datetime
+    state: Literal["pending", "accepted", "rejected", "expired", "stale"]
+    decision: PlanDecisionOut | None
+
+
+class LatestPlan(BaseModel):
+    plan: PlanOut | None
+
+
+class PlanHistoryOut(PlanDecisionOut):
+    title: str
+    due_date: date
+    evidence_text: str
+    action_type: Literal["create_task", "reschedule_task"]
+    previous_due_date: date | None
 
 
 class CropOut(BaseModel):

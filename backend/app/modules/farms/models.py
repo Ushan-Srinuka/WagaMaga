@@ -21,7 +21,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -143,6 +143,130 @@ class FarmObservation(RecordColumns, Base):
     recorded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str] = mapped_column(Text)
+
+
+class FarmTask(RecordColumns, Base):
+    __tablename__ = "farm_tasks"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="farm_tasks_version"),
+        CheckConstraint("title ~ '[^[:space:]]'", name="farm_tasks_title"),
+        CheckConstraint("isfinite(due_date)", name="farm_tasks_due_date"),
+        CheckConstraint(
+            "status IN ('pending', 'completed', 'cancelled')", name="farm_tasks_status"
+        ),
+        Index("ix_farm_tasks_due", "cultivation_id", "due_date", "id"),
+    )
+
+    cultivation_id: Mapped[UUID] = mapped_column(ForeignKey("cultivations.id", ondelete="RESTRICT"))
+    title: Mapped[str] = mapped_column(String(120))
+    due_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(9), default="pending")
+
+
+class FarmTaskEvent(Base):
+    __tablename__ = "farm_task_events"
+    __table_args__ = (
+        CheckConstraint(
+            "(version = 1 AND action = 'created') OR "
+            "(version > 1 AND action IN ('edited', 'completed', 'cancelled'))",
+            name="farm_task_events_action",
+        ),
+        CheckConstraint("title ~ '[^[:space:]]'", name="farm_task_events_title"),
+        CheckConstraint("isfinite(due_date)", name="farm_task_events_due_date"),
+    )
+
+    task_id: Mapped[UUID] = mapped_column(
+        ForeignKey("farm_tasks.id", ondelete="RESTRICT"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(120))
+    due_date: Mapped[date] = mapped_column(Date)
+    action: Mapped[str] = mapped_column(String(9))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    request_id: Mapped[str] = mapped_column(String(36))
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TaskPlan(Base):
+    __tablename__ = "task_plans"
+    __table_args__ = (
+        UniqueConstraint("id", "version", "action_hash", name="uq_task_plan_binding"),
+        CheckConstraint("version = 1", name="task_plans_version"),
+        CheckConstraint(
+            "(action_type = 'create_task' AND target_task_id IS NULL "
+            "AND target_task_version IS NULL "
+            "AND previous_due_date IS NULL AND weather_evidence IS NULL) OR "
+            "(action_type = 'reschedule_task' AND target_task_id IS NOT NULL "
+            "AND target_task_version IS NOT NULL AND target_task_version > 0 "
+            "AND previous_due_date IS NOT NULL AND isfinite(previous_due_date) "
+            "AND previous_due_date <> due_date AND weather_evidence IS NOT NULL "
+            "AND jsonb_typeof(weather_evidence) = 'object')",
+            name="task_plans_action",
+        ),
+        CheckConstraint("farm_version > 0 AND cultivation_version > 0", name="task_plans_context"),
+        CheckConstraint("isfinite(due_date) AND expires_at > created_at", name="task_plans_dates"),
+        Index("ix_task_plans_cultivation_created", "cultivation_id", "created_at", "id"),
+        Index("ix_task_plans_target_created", "target_task_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    cultivation_id: Mapped[UUID] = mapped_column(ForeignKey("cultivations.id", ondelete="RESTRICT"))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    action_type: Mapped[str] = mapped_column(String(16), default="create_task")
+    action_hash: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(120))
+    due_date: Mapped[date] = mapped_column(Date)
+    evidence_code: Mapped[str] = mapped_column(String(40))
+    evidence_text: Mapped[str] = mapped_column(Text)
+    farm_version: Mapped[int] = mapped_column(Integer)
+    cultivation_version: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    request_id: Mapped[str] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    target_task_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("farm_tasks.id", ondelete="RESTRICT")
+    )
+    target_task_version: Mapped[int | None] = mapped_column(Integer)
+    previous_due_date: Mapped[date | None] = mapped_column(Date)
+    weather_evidence: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+
+
+class TaskPlanDecision(Base):
+    __tablename__ = "task_plan_decisions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["plan_id", "plan_version", "action_hash"],
+            ["task_plans.id", "task_plans.version", "task_plans.action_hash"],
+            name="fk_task_plan_decision_binding",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "(outcome = 'accepted' AND task_id IS NOT NULL AND task_version IS NOT NULL) OR "
+            "(outcome = 'rejected' AND task_id IS NULL AND task_version IS NULL)",
+            name="task_plan_decisions_effect",
+        ),
+        UniqueConstraint("task_id", "task_version", name="uq_task_plan_decision_effect"),
+        ForeignKeyConstraint(
+            ["task_id", "task_version"],
+            ["farm_task_events.task_id", "farm_task_events.version"],
+            name="fk_task_plan_decision_effect",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    plan_id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_version: Mapped[int] = mapped_column(Integer)
+    action_hash: Mapped[str] = mapped_column(String(64))
+    outcome: Mapped[str] = mapped_column(String(8))
+    task_id: Mapped[UUID | None] = mapped_column(ForeignKey("farm_tasks.id", ondelete="RESTRICT"))
+    task_version: Mapped[int | None] = mapped_column(Integer)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    request_id: Mapped[str] = mapped_column(String(36))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    plan: Mapped[TaskPlan] = relationship()
 
 
 class RevisionColumns:

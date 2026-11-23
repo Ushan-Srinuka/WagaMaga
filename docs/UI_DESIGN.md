@@ -30,6 +30,18 @@ As the relevant features are implemented, provide direct controls for recording 
 
 A combined cultivation diary and an "I missed this task" revision entry point are [planned follow-ups in ROADMAP.md](ROADMAP.md#planned-planner-follow-ups). Their screen details and completion conditions are deferred until their dependencies work. Do not add those controls to the current Farm Records slice or expose nonfunctional farming actions on the homepage.
 
+### Manual tasks
+
+Open a cultivation and use **Farm tasks** to add a title and due date, edit pending work, mark it complete or cancel it. The list defaults to pending tasks and can show completed, cancelled or all tasks. **Cultivation history** shows task changes with their saved title, due date and time. Archived cultivations keep the list and history readable.
+
+Within **Farm tasks**, **Suggested plans** shows a labelled portfolio example beside the existing tasks. The review shows the proposed addition, local due date, checklist text and review deadline. **Accept and add task** immediately refreshes the pending list. **Reject suggestion** leaves the list as it was. **Plan decisions** in cultivation history shows both outcomes. Expired or stale examples can be replaced with a fresh review.
+
+**Demo weather** shows a simulated rain forecast with the saved farm location, timezone and date. Only open tasks due on the sample date offer **Review this task**. That action opens the manual editor with the saved date. **Keep task date** closes the editor without saving, and **Save task** applies the farmer's edits. Archived tasks and tasks on other dates show no weather review action. If the sample fails to load, the task controls stay available.
+
+**Weather forecast** shows the farm location, three dates, minimum and maximum temperatures, precipitation, provider attribution and fetch time. The fetch control explains that it shares approximate coordinates. Farms without coordinates link back to the farm record. Fresh forecast values appear beside pending tasks on matching dates. Stale forecasts stay labelled in the forecast card and are removed from the task rows. The existing editor lets farmers choose whether to change a date. The sample is shown through a separate development control.
+
+**Weather alerts** lets the farmer save or turn off a precipitation threshold per cultivation. Matching pending tasks show the due date, forecast amount and threshold. **Review task date** starts a date comparison. **Confirm new date** saves the reviewed date and **Keep current date** records a rejection. The task and plan histories retain the result and the weather evidence. When the forecast or task changes, the farmer reloads the alerts before starting another review.
+
 ## Screens and navigation
 
 ### Farmer onboarding follow-up - 19 November 2026
@@ -152,6 +164,26 @@ Current paths are /login, /register, /account, /admin/users and /admin/users/:id
 ## UI implementation order
 
 After M0, complete the early UM1 scope and its review/check gates. The later V0 journey adds cultivation context, question/source display, proposal comparison and acceptance result. Expand to complete domain screens in V1. Pair UI work with its API contract and failure states; a visual prototype alone does not establish working authentication or permissions.
-# Landing-page Help entry — 19 November 2026
+## Landing-page Help entry — 19 November 2026
 
 The landing page includes a simple sage panel immediately above the footer, with “Need a hand with your farm records?” and two actions. Visit Help Centre opens `/help`; Contact Support opens `/support/new` for signed-in farmers and `/help#sign-in` for other visitors. Actions sit beside the text when space permits and stack on mobile. Existing header/footer Help links remain available.
+
+## Knowledge Sources
+
+The signed-in **Chilli questions** screen starts with nursery site, irrigation and soil testing questions, followed by published study questions. It accepts typed variants. Practical answers show the relevant Department of Agriculture section and link to the public Sinhala crop page. Research answers show the study attribution, journal and PDF page, DOI and license. The selection label identifies Gemini only when the server verified its choice against the source summary. **Chilli farm guidance** opens the separate gated advice screen.
+
+Administrators can open **Knowledge Sources** in the workspace menu. Each synthetic guide card displays the saved status, version identifier, content and checksum. Review, publish and withdraw actions require confirmation.
+
+The PDF form accepts a synthetic document and explains size, page and text limits. Queued versions explain how to refresh. A failed extraction shows the reason where available. A ready version opens a plain text preview with PDF page numbers.
+
+**Search published PDFs** accepts keywords and shows a brief excerpt, PDF page number and version for each result. Expand **Citation details** for the complete version ID and checksum. Empty searches that have been submitted display **No evidence found** when no eligible page matches.
+
+**Remove PDF** is available on unpublished PDF cards, including queued and failed uploads. Confirming hides the card and retains the stored original and decision history. Published cards use **Withdraw**.
+
+The **Review the 10 chilli questions** link opens an admin page with a question selector, ranked candidate pages, expandable page text, a short review note and evidence labels. Decisions persist across reloads. Refresh the case if its sources or labels changed while reviewing.
+
+The admin **Gemini scoring** screen shows per-case readiness and the latest result for current evidence. The farmer workspace links to **Chilli questions**. While review is pending it displays the pilot status. After release it offers the fixed questions, a cited answer and an expandable page preview.
+
+The development frontend adds **Try the local demo** to **Chilli questions**. The demo lets the farmer type a question or insert an example. Its citation control opens the matched page of the fictional PDF. Example questions cover nursery labels, irrigation logs, fertilizer logs and a forecast with no evidence.
+
+**Search reviewed excerpts locally** is a second development entry from **Chilli questions**. Its examples use the nursery-site, irrigation and fertilizer review questions. An answer shows the approved English wording and the original quote when it differs from the answer. **Read cited page** opens the extracted page while its review and publication are current.

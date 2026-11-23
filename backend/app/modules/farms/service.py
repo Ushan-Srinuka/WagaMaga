@@ -123,10 +123,10 @@ def observed_time(value):
         raise IdentityError(422, "FUTURE_OBSERVATION", "Observation time cannot be in the future.")
 
 
-def local_today(db, farm):
+def local_today(db, farm, *, at=None):
     return db.scalar(
         text("SELECT CAST(timezone(:zone, :stamp) AS date)"),
-        {"zone": farm.timezone, "stamp": now()},
+        {"zone": farm.timezone, "stamp": at if at is not None else now()},
     )
 
 

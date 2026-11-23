@@ -36,7 +36,7 @@ Do not infer permission to perform unsafe task mutations from the release label.
 | D05 | Code license and source repository/remote? | Repository setup/sharing | GitHub remote configured at Ushan-Srinuka/WagaMaga; code license remains unselected. |
 | D06 | Exact V0 identity, acceptance and execution scope? | Before V0 mutations | Synthetic local records only; apply DR02 when tasks change |
 | D07 | Supported area, evidence coverage and reuse rights? | Before publishing the corpus | Confirm chilli applicability and permissions |
-| D08 | Parser, upload limits, scan mechanism and extraction fallback? | Before ingestion | Bound worker resources; OCR optional and evaluated |
+| D08 | Parser, upload limits, scan mechanism and extraction fallback? | Before ingestion | Bound worker resources; local FM-Abhaya legacy text conversion selected for recognized fonts. OCR remains deferred. |
 | D09 | LLM/embedding provider, model, dimensions, privacy and budget? | Before real AI evaluation | Compare using fixed questions; fake providers for ordinary tests |
 | D10 | Routine/referred/blocked categories and qualified reviewer? | Before executable proposals/pilot | Review policy with an agricultural advisor; label simulated review |
 | D11 | Session durations, hash library, recovery, rate limits, CSRF and CORS? | UM1 | D19-D23 are selected for the authorized implementation; recovery/email verification and real-user policy remain open. |
@@ -262,6 +262,44 @@ The user explicitly approved Admin Overview after Help/support, following discus
 Use a single PostgreSQL count statement per response for internally consistent groups and a statement timestamp. Exclude workspace-deleted farms and removed/former-farmer owners; include disabled current farmers' retained records and count inherited crop archives. Account enabled state is not activity measurement. Support totals include retained submitted requests. No raw farm fields, private message content, charts, location grouping or exports are added. Audited views use a fixed reason and report kind, with no counts/private record IDs in audit; audit failure prevents a successful response.
 
 Reuse current admin/session checks under locks, shared typed HTTP resources, React Router and theme. Admin login now opens Overview, farmer login stays on the landing page and advisor login stays on My Account. New account-page metadata requests are separate from the owner-only farm endpoints. No database migration, new privilege, dependency, provider or worker job is selected. Remote CI and real-user reporting/retention policies remain separate gates.
+
+## D31: synthetic PDF extraction
+
+Use [pypdf](https://pypi.org/project/pypdf/) in a bounded subprocess to extract selectable text locally without a provider. Keep the input file and durable queue state in one private PostgreSQL relation for this tightly capped demo. This makes upload acceptance atomic and avoids split database/file writes. The shared application role can read originals for processing. The HTTP interface returns plain text pages to active admins and exposes no raw PDF download.
+
+Use one locked row per job. A complete processing result commits once, and interrupted transactions leave work queued. Review and publication apply to the original checksum and immutable extraction. Consider dedicated private file storage, screening, OCR and stronger cross-platform isolation separately before opening real-source ingestion.
+
+## D32: Gemini for the local fictional answer preview
+
+Use the [Gemini generateContent API](https://ai.google.dev/gemini-api/docs/generate-content/text-generation) with structured quotations, a server-only key and a configurable model. Keep provider traffic to the built-in fictional PDF and fixed questions while evaluating the unpaid service. The server checks the exact quotation, citation and current publication state before it returns an answer. Developer and CI tests use deterministic doubles and do not measure model quality. Real-source evaluation requires completed evidence review and a decision on external processing under the [Gemini terms](https://ai.google.dev/gemini-api/terms).
+
+## D33: Sinhala legacy-font extraction
+
+The DOA 2023 Sinhala guide renders correctly but its embedded FM-Abhaya text layer extracts as legacy Latin glyph codes. Use the pinned, pure-Python `sinhalanorm` converter only when PDF font metadata identifies FM-Abhaya, FM-Ababld, FM-Emanee or FM-Samantha, then index normalized Unicode. Preserve English and other unknown font runs unchanged. This does not claim support for sandaru-n, DL or other legacy fonts, image-only pages, or general Sinhala OCR; those require separate validation. The guide remains draft until its extracted passages are reviewed.
+
+## D34: delete withdrawn knowledge PDFs
+
+An administrator can delete a withdrawn PDF. In one transaction, change the source lifecycle to deleted, clear the stored original and full extracted page text, and append a lifecycle decision. Hide deleted versions from source lists and deny their page routes. Keep the source title/checksum and existing evaluation decisions, approved excerpts and audit history so prior review evidence remains traceable. This is removal of the uploaded file and full extracted pages, not complete erasure of every retained excerpt. Only ready/failed withdrawn PDF versions can be deleted; published sources must first be withdrawn. Database constraints and a trigger restrict the application role to the worker's single queued completion and this deletion transition. See [API.md](API.md) and [DATABASE.md](DATABASE.md).
+
+## D35: published chilli research answers
+
+Start the farmer research view with versioned summaries from the two CC BY 4.0 studies in [KNOWLEDGE_SOURCE_INVENTORY.md](KNOWLEDGE_SOURCE_INVENTORY.md). Use study-specific facts with page citations. Reuse the server-side Gemini adapter only for optional selection from the fixed summaries. Keep typed questions, farm details and uploaded documents outside these requests and verify the exact returned selection before displaying its Gemini label. A deterministic reference answer provides the same source when the provider fails. Farm-specific guidance remains subject to its existing separate release conditions.
+
+The second reference set adds short English summaries of three sections of the Department of Agriculture's public chilli crop page. The answers cite the Sinhala section and stay inside the API. The source supports general checks for nursery siting, irrigation and soil testing. [Field crops – Chilli](https://doa.gov.lk/field-crops-chilli-si/)
+
+## D36: manual Open-Meteo farm forecast
+
+Use the [Open-Meteo daily forecast API](https://open-meteo.com/en/docs) for calendar dates, temperatures and precipitation. The API request starts with an owner action and shares two-decimal coordinates and the farm timezone. The [non-commercial service](https://open-meteo.com/en/terms) serves keyless local use. The customer endpoint uses the optional server key. Display provider credit and license beside the forecast.
+
+Store one current snapshot per farm. Reuse a snapshot for 30 minutes and show it as stale after two hours or a change of local day. Keep stale data out of task rows. The owner can compare dates and use manual task editing. Agronomic thresholds and automated weather reviews remain part of D13's later work.
+
+## D37: weather alerts and owner-reviewed date changes
+
+Let the owner choose a precipitation threshold for each cultivation. Recheck pending tasks against current forecast dates, keeping one alert per task and due date. The threshold is a review preference. The owner selects the proposed date and approves the exact action. Bind that action to the task version, current forecast and rule version. Store the evidence with the plan and reference its resulting task event from the acceptance record.
+
+## D38: synthetic PostgreSQL restore verification
+
+Use `pg_dump` and `pg_restore` from the existing PostgreSQL/pgvector container so the tools match the database version. Seed the dedicated test database through the application integration test, restore to a temporary database and check restored data and grants before cleanup. Run the same drill in the backend workflow. [Testing guide](TESTING.md#chilli-questions-and-reliability)
 
 ## Recording an outcome
 

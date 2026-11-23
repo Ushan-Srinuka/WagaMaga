@@ -57,6 +57,342 @@ async function fit(page: Page) {
   ).toBe(true)
 }
 
+async function taskCultivation(
+  request: APIRequestContext,
+  owner: Awaited<ReturnType<typeof actor>>,
+) {
+  const createdFarm = await request.post(root + '/farms', {
+    headers: owner.headers,
+    data: { name: 'Synthetic task farm', location: 'Synthetic village' },
+  })
+  expect(createdFarm.ok()).toBe(true)
+  const farm = await createdFarm.json()
+  const crops = await request.get(root + '/crop-types', {
+    headers: owner.headers,
+  })
+  expect(crops.ok()).toBe(true)
+  const { items } = await crops.json()
+  const chilli = items.find((crop: { code: string }) => crop.code === 'chilli')
+  const createdCultivation = await request.post(
+    root + `/farms/${farm.id}/cultivations`,
+    {
+      headers: owner.headers,
+      data: {
+        crop_type_id: chilli.id,
+        planting_date: '2099-01-15',
+        area_value: '1',
+        area_unit: 'ha',
+      },
+    },
+  )
+  expect(createdCultivation.ok()).toBe(true)
+  const cultivation = await createdCultivation.json()
+  return `/farms/${farm.id}/cultivations/${cultivation.id}`
+}
+
+test('farmer manages manual tasks and sees their cultivation history', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic task farmer')
+  const cultivation = await taskCultivation(request, owner)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const tasks = page.getByRole('region', { name: 'Farm tasks' })
+
+  async function addTask(title: string) {
+    await tasks.getByRole('button', { name: 'Add task' }).click()
+    await tasks.getByLabel('Task title').fill(title)
+    await tasks.getByLabel('Due date').fill('2099-01-16')
+    await fit(page)
+    await tasks.getByRole('button', { name: 'Save task' }).click()
+    await expect(tasks.getByRole('heading', { name: title })).toBeVisible()
+  }
+
+  await addTask('Check plot markers')
+  await page.reload()
+  const task = tasks
+    .getByRole('article')
+    .filter({ hasText: 'Check plot markers' })
+  await expect(task.getByText('Due 2099-01-16')).toBeVisible()
+  await task.getByRole('button', { name: 'Edit task' }).click()
+  await tasks.getByLabel('Due date').fill('2099-01-17')
+  await tasks.getByRole('button', { name: 'Save task' }).click()
+  await expect(task.getByText('Due 2099-01-17')).toBeVisible()
+  await task.getByRole('button', { name: 'Mark complete' }).click()
+  await expect(tasks.getByText('No pending tasks.')).toBeVisible()
+
+  await addTask('Copy plot labels')
+  const another = tasks
+    .getByRole('article')
+    .filter({ hasText: 'Copy plot labels' })
+  await another.getByRole('button', { name: 'Cancel task' }).click()
+  await expect(tasks.getByText('No pending tasks.')).toBeVisible()
+  await tasks.getByLabel('Task status').selectOption('all')
+  await expect(task.getByText('Completed', { exact: true })).toBeVisible()
+  await expect(another.getByText('Cancelled', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Cultivation history' }).click()
+  const history = page.getByRole('region', { name: 'Task history' })
+  await expect(history.getByText('Completed · Due 2099-01-17')).toBeVisible()
+  await expect(history.getByText('Cancelled · Due 2099-01-16')).toBeVisible()
+  await expect(history.getByRole('article')).toHaveCount(5)
+  await fit(page)
+})
+
+test('farmer reviews suggested plans and accepts one addition', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic planner farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const current = await request.post(root + cultivation + '/tasks', {
+    headers: owner.headers,
+    data: { title: 'Copy the field log', due_date: '2099-01-16' },
+  })
+  expect(current.ok()).toBe(true)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const tasks = page.getByRole('region', { name: 'Farm tasks' })
+  const plans = tasks.getByRole('region', { name: 'Suggested plans' })
+  const newTask = tasks
+    .getByRole('article')
+    .filter({ hasText: 'Check plot labels' })
+  const review = plans.getByRole('button', { name: 'Review example plan' })
+
+  await review.click()
+  await expect(
+    plans.getByRole('heading', { name: 'Check plot labels' }),
+  ).toBeVisible()
+  await expect(plans.getByText(/Sample recordkeeping checklist/)).toBeVisible()
+  await expect(
+    tasks.getByRole('heading', { name: 'Copy the field log' }),
+  ).toBeVisible()
+  await expect(newTask).toHaveCount(0)
+  await fit(page)
+  await plans.getByRole('button', { name: 'Reject suggestion' }).click()
+  await expect(plans.getByText('Rejected', { exact: true })).toBeVisible()
+  await expect(newTask).toHaveCount(0)
+
+  await review.click()
+  const accept = plans.getByRole('button', { name: 'Accept and add task' })
+  await expect(accept).toBeVisible()
+  const due = await plans.locator('time').innerText()
+  await accept.click()
+  await expect(
+    plans.getByText('Accepted · Task added', { exact: true }),
+  ).toBeVisible()
+  await expect(newTask.getByText(`Due ${due}`)).toBeVisible()
+  await page.reload()
+  await expect(newTask).toHaveCount(1)
+  await expect(
+    plans.getByText('Accepted · Task added', { exact: true }),
+  ).toBeVisible()
+  await page.getByRole('link', { name: 'Cultivation history' }).click()
+  const decisions = page.getByRole('region', { name: 'Plan decisions' })
+  await expect(
+    decisions.getByText(`Accepted · Task added · Due ${due}`),
+  ).toBeVisible()
+  await expect(decisions.getByText(/Rejected · Due/)).toBeVisible()
+  await fit(page)
+})
+
+test('farmer reviews a matching task from the demo weather sample', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic weather farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const unrelated = await request.post(root + cultivation + '/tasks', {
+    headers: owner.headers,
+    data: { title: 'File the field log', due_date: '2099-01-16' },
+  })
+  expect(unrelated.ok()).toBe(true)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const tasks = page.getByRole('region', { name: 'Farm tasks' })
+  await tasks.getByRole('button', { name: 'Show demo weather' }).click()
+  const weather = tasks.getByRole('region', { name: 'Demo weather' })
+  await expect(
+    weather.getByText(/Simulated forecast for Synthetic village/),
+  ).toBeVisible()
+  await expect(weather.getByText(/18 mm sample rainfall/)).toBeVisible()
+  const due = await weather.locator('time').innerText()
+  await expect(
+    tasks
+      .getByRole('article')
+      .filter({ hasText: 'File the field log' })
+      .getByRole('button', { name: 'Edit task' }),
+  ).toBeVisible()
+
+  const plans = tasks.getByRole('region', { name: 'Suggested plans' })
+  await plans.getByRole('button', { name: 'Review example plan' }).click()
+  await expect(plans.locator('time')).toHaveText(due)
+  await plans.getByRole('button', { name: 'Accept and add task' }).click()
+  const matching = tasks
+    .getByRole('article')
+    .filter({ hasText: 'Check plot labels' })
+  const reviewTask = matching.getByRole('button', { name: 'Review this task' })
+  await expect(
+    tasks.getByRole('button', { name: 'Review this task' }),
+  ).toHaveCount(1)
+  const dueDate = tasks.getByLabel('Due date', { exact: true })
+  await reviewTask.click()
+  await expect(dueDate).toHaveValue(due)
+  await expect(dueDate).toBeFocused()
+  await tasks.getByRole('button', { name: 'Keep task date' }).click()
+  await expect(matching.getByText(`Due ${due}`)).toBeVisible()
+  const historyAfterKeep = await request.get(
+    root + cultivation + '/tasks/history',
+    {
+      headers: owner.headers,
+    },
+  )
+  expect(historyAfterKeep.ok()).toBe(true)
+  expect((await historyAfterKeep.json()).total).toBe(2)
+
+  await reviewTask.click()
+  const next = new Date(`${due}T12:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  const newDate = next.toISOString().slice(0, 10)
+  await dueDate.fill(newDate)
+  await tasks.getByRole('button', { name: 'Save task' }).click()
+  await expect(matching.getByText(`Due ${newDate}`)).toBeVisible()
+  await expect(reviewTask).toHaveCount(0)
+  await page.reload()
+  await expect(matching.getByText(`Due ${newDate}`)).toBeVisible()
+  await expect(reviewTask).toHaveCount(0)
+  await fit(page)
+})
+
+test('farmer fetches a farm forecast and sees it alongside a pending task', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic forecast farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const farmPath = cultivation.split('/cultivations/')[0]
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const weather = page.getByRole('region', { name: 'Weather forecast' })
+  await expect(
+    weather.getByRole('link', { name: 'Open farm to add coordinates' }),
+  ).toHaveAttribute('href', farmPath)
+  await expect(
+    weather.getByRole('button', { name: 'Fetch forecast' }),
+  ).toHaveCount(0)
+
+  const updated = await request.patch(root + farmPath, {
+    headers: owner.headers,
+    data: { latitude: '8.3114', longitude: '80.4037', expected_version: 1 },
+  })
+  expect(updated.ok()).toBe(true)
+  await page.reload()
+  await weather.getByRole('button', { name: 'Fetch forecast' }).click()
+  await expect(
+    weather.getByRole('link', { name: 'Weather data by Open-Meteo' }),
+  ).toBeVisible()
+  await expect(
+    weather.getByText('Low 24 °C · High 31 °C').first(),
+  ).toBeVisible()
+  await expect(weather.getByText('8.5 mm precipitation')).toBeVisible()
+  const firstDay = weather
+    .getByRole('list', { name: 'Daily forecast' })
+    .locator('time')
+    .first()
+  const due = await firstDay.innerText()
+  const tasks = page.getByRole('region', { name: 'Farm tasks' })
+  await tasks.getByRole('button', { name: 'Add task' }).click()
+  await tasks.getByLabel('Task title').fill('Check the field log')
+  await tasks.getByLabel('Due date').fill(due)
+  await tasks.getByRole('button', { name: 'Save task' }).click()
+  const matching = tasks
+    .getByRole('article')
+    .filter({ hasText: 'Check the field log' })
+  await expect(
+    matching.getByText(/Forecast for the due date · 8.5 mm/),
+  ).toBeVisible()
+  await expect(
+    matching.getByRole('button', { name: 'Edit task' }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(
+    weather.getByRole('button', { name: 'Refresh forecast' }),
+  ).toBeVisible()
+  await expect(matching.getByText(`Due ${due}`)).toBeVisible()
+  await fit(page)
+})
+
+test('farmer sets a weather alert and confirms a reviewed task date', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic weather review farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const farmPath = cultivation.split('/cultivations/')[0]
+  const updated = await request.patch(root + farmPath, {
+    headers: owner.headers,
+    data: { latitude: '8.3114', longitude: '80.4037', expected_version: 1 },
+  })
+  expect(updated.ok()).toBe(true)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const tasks = page.getByRole('region', { name: 'Farm tasks' })
+  const weather = tasks.getByRole('region', { name: 'Weather forecast' })
+  await weather.getByRole('button', { name: 'Fetch forecast' }).click()
+  const due = await weather
+    .getByRole('list', { name: 'Daily forecast' })
+    .locator('time')
+    .first()
+    .innerText()
+  const alerts = tasks.getByRole('region', { name: 'Weather alerts' })
+  await alerts.getByLabel('Rain alert threshold (mm)').fill('5')
+  await alerts.getByRole('button', { name: 'Save threshold' }).click()
+  await expect(alerts.getByText('Weather alert threshold saved.')).toBeVisible()
+
+  await tasks.getByRole('button', { name: 'Add task' }).click()
+  await tasks.getByLabel('Task title').fill('Synthetic rain task')
+  await tasks.getByLabel('Due date', { exact: true }).fill(due)
+  await tasks.getByRole('button', { name: 'Save task' }).click()
+  const alert = alerts
+    .getByRole('article')
+    .filter({ hasText: 'Synthetic rain task' })
+  await expect(alert).toHaveCount(1)
+  await expect(alert).toContainText('8.5 mm forecast')
+  await weather.getByRole('button', { name: 'Refresh forecast' }).click()
+  await expect(
+    weather.getByRole('button', { name: 'Refresh forecast' }),
+  ).toBeEnabled()
+  await expect(alert).toHaveCount(1)
+
+  await alert.getByRole('button', { name: 'Review task date' }).click()
+  const review = alerts.getByRole('region', { name: 'Review task date change' })
+  const next = new Date(`${due}T12:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  const replacement = next.toISOString().slice(0, 10)
+  await review.getByLabel('Proposed date').fill(replacement)
+  await review.getByRole('button', { name: 'Review new date' }).click()
+  await expect(review.getByText(due, { exact: true })).toBeVisible()
+  await expect(review.getByText(replacement, { exact: true })).toBeVisible()
+  const task = tasks.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Synthetic rain task', level: 3 }),
+  })
+  await expect(task.getByText(`Due ${due}`, { exact: true })).toBeVisible()
+  await review.getByRole('button', { name: 'Confirm new date' }).click()
+  await expect(
+    task.getByText(`Due ${replacement}`, { exact: true }),
+  ).toBeVisible()
+  await expect(alert).toHaveCount(0)
+  await page.reload()
+  await expect(
+    task.getByText(`Due ${replacement}`, { exact: true }),
+  ).toBeVisible()
+  await page.getByRole('link', { name: 'Cultivation history' }).click()
+  await expect(
+    page.getByRole('region', { name: 'Plan decisions' }),
+  ).toContainText(`Accepted · ${due} → ${replacement}`)
+  await fit(page)
+})
+
 test('visitor can start from the landing hero without loading private farms', async ({
   page,
 }, info) => {

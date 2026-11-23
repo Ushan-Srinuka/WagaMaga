@@ -45,7 +45,7 @@ def administrator(db: DB, ids: Principal):
     return user
 
 
-def browser_write(
+def browser_origin(
     request: Request,
     x_wagamaga_client: Annotated[str | None, Header()] = None,
 ):
@@ -55,6 +55,9 @@ def browser_write(
         or x_wagamaga_client != "web"
     ):
         raise IdentityError(403, "ORIGIN_DENIED", "This request origin is not permitted.")
+
+
+def browser_write(request: Request, _: Annotated[None, Depends(browser_origin)]):
     if request.headers.get("content-length", "0") != "0" and (
         request.headers.get("content-type", "").split(";")[0] != "application/json"
     ):

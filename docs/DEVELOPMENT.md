@@ -1,6 +1,32 @@
 # Development guide
 
-Status: M0, UM1 accounts and Farm Records FR-B persistence/FR-C APIs/FR-D screens are implemented locally through 19 November 2026. Current schema is `0007_support`, adding website support after farm restore/workspace deletion without a new dependency. AI and remote CI remain pending. TESTING.md owns actual local outcomes.
+Status: M0, UM1 accounts, Farm Records, manual cultivation tasks, suggested plans, live farm forecasts, weather alerts and date reviews, website support and the knowledge workflow are implemented locally. Current schema is `0019_weather_task_review`. TESTING.md records actual outcomes.
+
+Sign in as a farmer and open **Chilli questions** to read cited answers about nursery setup, irrigation, soil testing and two published studies. The public crop-page answers run locally. The existing `GEMINI_API_KEY` enables optional selection from the four published study summaries, with a local fallback. Use the [local walkthrough](KNOWLEDGE_EVALUATION.md#portfolio-demo) to exercise the separate fictional PDF workflow.
+
+For manual tasks, run `.\scripts\uv.ps1 run alembic upgrade head` before starting the API and worker. Sign in as a farmer, open a cultivation under **My farms** and use **Farm tasks → Add task**. Reload to check the task was saved, then mark it complete and open **Cultivation history**.
+
+For the suggested plan demo, open **Farm tasks → Suggested plans → Review example plan** on the cultivation page. Compare the new task and due date with the current list. **Accept and add task** creates the pending task. **Reject suggestion** records the decision without adding a task. Both outcomes appear in **Cultivation history → Plan decisions**. The example uses a built-in checklist and needs no provider key.
+
+For live weather, apply `alembic upgrade head` and open a cultivation under a farm with saved coordinates. Choose **Farm tasks → Weather forecast → Fetch forecast**. Keyless local requests use Open-Meteo's non-commercial endpoint. Set `OPEN_METEO_API_KEY` for the dedicated customer endpoint. In a non-commercial production environment, set `OPEN_METEO_NONCOMMERCIAL=true` to enable the keyless endpoint.
+
+Under **Weather alerts**, save a precipitation threshold in millimetres. A matching pending task offers **Review task date**. Choose a different date, open the comparison and select **Confirm new date** or **Keep current date**. The result appears in **Cultivation history → Plan decisions**.
+
+Choose **Show demo weather** in development to run the separate fixture walkthrough. Accept the example plan to create a task on the sample date, then use **Review this task** to try keeping or changing the date.
+
+To try the knowledge workflow, run `.\scripts\uv.ps1 run alembic upgrade head` from the repository root before starting the API and worker. Sign in as an administrator and open **Knowledge Sources** in the workspace menu. Choose **Add synthetic guide**, then review, publish and withdraw that version. The example is built into the application and requires no provider key.
+
+For a PDF source, start the separate worker with `.\scripts\uv.ps1 run python -m app.worker`. In **Knowledge Sources**, select a PDF up to 6 MiB and 100 pages, upload it and choose **Refresh sources** after the worker runs. Extraction is bounded to 120,000 characters. Recognized FM-Abhaya, FM-Ababld, FM-Emanee and FM-Samantha text is converted to Unicode; other legacy-font runs may remain unsearchable. Use **View extracted text** to review the numbered pages. Withdraw a published upload before choosing **Delete PDF** to remove its original and full extracted pages; the source title/checksum and review/audit evidence remain. The worker's `--once` flag checks readiness only. Image-only PDFs still need OCR.
+
+The extractor reads the left column before the right when it finds two sustained, overlapping prose blocks. Always compare passages on complex pages, such as pages with tables or figures, with the original PDF. To apply an extractor update to an existing PDF, upload it as a new draft. Saved extraction results belong to their original version.
+
+To try local chilli references through the farmer screen on localhost, use `LOCAL_NURSERY_REFERENCE` for nursery and `LOCAL_CHILLI_REFERENCES` for `CH-04` irrigation and `CH-05` fertilizer in the ignored root `.env`. Each reference contains `version_id`, `checksum`, `page_number`, `title`, `excerpt` and `english_translation`. Restart the API after changing them. Draft references work only in development; the app verifies the pinned PDF version, checksum and exact Sinhala quote before showing **Local PDF reference · Draft translation** and the cited excerpt. Remove a setting entry to hide its reference. These local draft translations have not been approved for the farmer pilot.
+
+For the local **Gemini answer preview**, put an AI Studio API key in the ignored root `.env` as `GEMINI_API_KEY` and restart the API. Confirm the project uses unpaid quota before live demo requests. The configurable `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`. In **Knowledge Sources**, choose **Add Gemini demo PDF**, refresh after extraction, review the numbered pages, and publish the sample. Choose one of the fixed demo questions in **Gemini answer preview**. A question with no matching sample evidence works without a key.
+
+The portfolio walkthrough uses the defaults `GEMINI_APPROVED_PDF_CHECKSUMS=[]` and `FARMER_ADVISORY_ENABLED=false`.
+
+For a farm guidance pilot, set `GEMINI_APPROVED_PDF_CHECKSUMS` in the server `.env` to a JSON list of eligible SHA-256 fingerprints and restart the API. Review and label the cases, then score them at `/admin/knowledge/scoring`. After all current cases pass, `FARMER_ADVISORY_ENABLED=true` and an API restart enable the fixed questions at `/knowledge/chilli/guidance`.
 
 ## Local setup: foundation and user management
 
@@ -79,7 +105,7 @@ The image is digest-pinned for Linux/amd64 in compose.yaml. Windows on this mach
 
 ## Farm Records persistence checkpoint
 
-Run the existing `alembic upgrade head` setup command before API/worker startup; readiness expects `0007_support`. The local development and dedicated test databases were upgraded for FR-B. This migration adds the farm tables/reference crop without modifying existing account/notification rows. It creates no farmer records or demo accounts in development. Do not downgrade a database containing farm history to remove the feature; downgrade/rebuild checks run only against disposable `_test` data.
+Run the existing `alembic upgrade head` setup command before API/worker startup. The original FR-B migration adds the farm tables and reference crop without modifying existing account or notification rows. It creates no farmer records or demo accounts in development. Downgrade and rebuild checks run only against disposable `_test` data.
 
 The explicit synthetic farm fixture lives in backend/tests/conftest.py and runs only through tests using guarded test URLs. Follow [TESTING.md](TESTING.md) to verify migrations, grants, constraints and service/API transactions. `alembic check` includes farm model metadata. There is no farm seed CLI; the connected FR-D interface is described below.
 
@@ -89,7 +115,7 @@ FR-D use: start PostgreSQL/API/frontend with the existing setup above, register/
 
 ## Farmer onboarding and location entry - 19 November 2026
 
-Farm lifecycle follow-up: run `.\scripts\uv.ps1 run alembic upgrade head` before starting API/worker; readiness expects `0007_support`. Existing farm records/history are preserved. In My Farms choose Farm status → Archived, open a farm and choose Restore farm or Delete farm. Restore returns it to active use while independently archived crops remain archived. Delete requires the current farm name and removes access from the workspace; stored historical data is retained and the UI cannot undo deletion. This is not a data-erasure tool. Migration downgrade refuses while lifecycle evidence exists. Test rebuilds must remain on disposable `_test` databases.
+Farm lifecycle follow-up: run `.\scripts\uv.ps1 run alembic upgrade head` before starting API/worker. Existing farm records/history are preserved. In My Farms choose Farm status → Archived, open a farm and choose Restore farm or Delete farm. Restore returns it to active use while independently archived crops remain archived. Delete requires the current farm name and removes access from the workspace; stored historical data is retained and the UI cannot undo deletion. This is not a data-erasure tool. Migration downgrade refuses while lifecycle evidence exists. Test rebuilds must remain on disposable `_test` databases.
 
 Farmer sign-in now returns to `http://127.0.0.1:5173/`. The website header has My Farms and Add Farm, while the hero action bar offers Add my farm for a new farmer or a private farm selector and next crop/observation action for returning farmers. Choose your own farm name, district and village/town, then add a crop/planting date/area and an observation. There is no separate farmer dashboard or fixed mobile bottom navigation. Advisors sign in to My Account and administrators to Admin Overview and cannot access private farmer records. A farmer visiting the old `/dashboard` URL is redirected home.
 
@@ -110,7 +136,7 @@ The harness still refuses non-`_test` databases, creates synthetic accounts, bin
 
 Admin Overview follow-up (D30): administrator login now opens `http://127.0.0.1:5173/admin/overview`, showing account/farm/cultivation/support count summaries. Farmers still open the website landing page and advisors My Account. Admin account navigation and the signed-in website header link to Overview. Open a current farmer in User management to see the count-only Farm record summary; no farm names/locations/notes are exposed. Existing farm endpoints still reject administrators. Report views are recorded in account audit history; audit failure prevents a successful report. No additional configuration or migration is needed after `0007_support`. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md) for definitions and [TESTING.md](TESTING.md) for evidence.
 
-Run the normal migration command before API/worker startup; current head is `0007_support`. Open `http://127.0.0.1:5173/help` for public FAQs and contact. Signed-in farmers use `/support` or `/support/new`; administrators use `/admin/support`. Submitting shares only the typed support conversation, not private farm records. In-progress/resolved states and generic in-app notifications work without an email provider. Account recovery, attachments, live chat and Admin Overview remain pending.
+Run the normal migration command before API/worker startup. Open `http://127.0.0.1:5173/help` for public FAQs and contact. Signed-in farmers use `/support` or `/support/new`; administrators use `/admin/support`. Submitting shares only the typed support conversation, not private farm records. In-progress/resolved states and generic in-app notifications work without an email provider. Account recovery, attachments and live chat remain pending.
 
 To provide a public contact for farmers who cannot sign in, set `SUPPORT_CONTACT_EMAIL` to a monitored operator email in the ignored root `.env` and restart the API. The optional field defaults to unset, is validated by existing email-validator and exposed publicly by `/api/v1/help/contact`; it is not a secret or SMTP setting. Do not use an invented/unmonitored address. The Help page honestly reports when contact is not configured. Setting it sends no email and does not implement password recovery or bypass identity checks. A real contact/recovery policy is still needed before external users are invited. See [SUPPORT.md](SUPPORT.md) for the scope and [TESTING.md](TESTING.md) for exact verified commands.
 
@@ -263,7 +289,7 @@ No business CRUD, authentication screens, RAG or live provider calls belong in t
 
 ## Implemented and future configuration names
 
-APP_ENV, database/storage/CORS and AUTH settings are implemented and reflected in Settings/.env.example. Model/weather variables remain future designs and are not needed for user management.
+APP_ENV, database, storage, CORS, provider and AUTH settings are reflected in Settings and .env.example. User management and manual farm records run without provider credentials.
 
 | Variable | Purpose |
 | --- | --- |
@@ -277,7 +303,7 @@ APP_ENV, database/storage/CORS and AUTH settings are implemented and reflected i
 | `AUTH_LOGIN_FAILURES`, `AUTH_LOGIN_IP_ATTEMPTS`, `AUTH_REGISTRATION_ATTEMPTS`, `AUTH_REFRESH_ATTEMPTS` | Shared fixed-window account/IP/family abuse limits; defaults in D23 |
 | `MODEL_PROVIDER`, `MODEL_NAME`, `EMBEDDING_MODEL` | Versioned AI configuration, introduced with advisory work |
 | `MODEL_API_KEY` | Server-only credential if required by the chosen provider |
-| `WEATHER_PROVIDER`, `WEATHER_API_KEY` | Weather configuration, introduced when required |
+| `OPEN_METEO_API_KEY`, `OPEN_METEO_NONCOMMERCIAL` | Optional customer key or explicit keyless non-commercial production use |
 
 Do not put credentials in frontend variables. Do not require model/weather keys to start the foundation or use manual farm management. Configure database/bootstrap credentials separately from the normal app role.
 

@@ -3,11 +3,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 
+from app.modules.farms import plans, service, tasks
 from app.modules.farms import schemas as dto
-from app.modules.farms import service
-from app.modules.identity.dependencies import DB, Principal, browser_write
+from app.modules.identity.dependencies import DB, Principal, browser_write, limiter
+from app.modules.identity.service import Limiter
+from app.modules.weather import alerts, reschedules
+from app.modules.weather import demo as weather_demo
+from app.modules.weather import live as live_weather
 
 
 def farmer_access(db: DB, ids: Principal):
@@ -35,6 +39,12 @@ ObservationQuery = Annotated[dto.ObservationQuery, Query()]
 FarmHistory = dto.Page[dto.HistoryItem[dto.FarmSnapshot]]
 CultivationHistory = dto.Page[dto.HistoryItem[dto.CultivationSnapshot]]
 ObservationHistory = dto.Page[dto.HistoryItem[dto.ObservationSnapshot]]
+TaskQuery = Annotated[dto.TaskQuery, Query()]
+TASKS = "/farms/{farm_id}/cultivations/{cultivation_id}/tasks"
+PLANS = "/farms/{farm_id}/cultivations/{cultivation_id}/task-plans"
+WEATHER = "/farms/{farm_id}/cultivations/{cultivation_id}/weather"
+ALERTS = WEATHER + "/alerts"
+PlanKey = Annotated[UUID, Header(alias="Idempotency-Key")]
 
 
 @router.get("/crop-types", response_model=dto.Page[dto.CropOut])
@@ -167,6 +177,176 @@ def stage_confirmation(
 def cultivation_history(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
     return service.history(
         db, ids, "cultivation", query, farm_id=farm_id, cultivation_id=cultivation_id
+    )
+
+
+@router.get(TASKS, response_model=dto.Page[dto.TaskOut])
+def list_tasks(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: TaskQuery):
+    return tasks.list_tasks(db, ids, farm_id, cultivation_id, query)
+
+
+@router.post(TASKS, response_model=dto.TaskOut, status_code=201, dependencies=write)
+def create_task(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    data: dto.TaskCreate,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return tasks.create_task(db, ids, farm_id, cultivation_id, data, request.state.request_id)
+
+
+@router.patch(TASKS + "/{task_id}", response_model=dto.TaskOut, dependencies=write)
+def edit_task(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    task_id: UUID,
+    data: dto.TaskEdit,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return tasks.change_task(
+        db, ids, farm_id, cultivation_id, task_id, data, request.state.request_id
+    )
+
+
+@router.post(TASKS + "/{task_id}/status", response_model=dto.TaskOut, dependencies=write)
+def change_task_status(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    task_id: UUID,
+    data: dto.TaskTransition,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return tasks.change_task(
+        db, ids, farm_id, cultivation_id, task_id, data, request.state.request_id
+    )
+
+
+@router.get(TASKS + "/history", response_model=dto.Page[dto.TaskEventOut])
+def task_history(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return tasks.task_history(db, ids, farm_id, cultivation_id, query)
+
+
+@router.get(PLANS, response_model=dto.LatestPlan)
+def latest_plan(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal):
+    return plans.latest(db, ids, farm_id, cultivation_id)
+
+
+@router.post(PLANS, response_model=dto.PlanOut, dependencies=write)
+def create_plan(
+    farm_id: UUID, cultivation_id: UUID, _body: dto.Input, request: Request, db: DB, ids: Principal
+):
+    return plans.create(db, ids, farm_id, cultivation_id, request.state.request_id)
+
+
+@router.post(PLANS + "/{plan_id}/decision", response_model=dto.PlanDecisionOut, dependencies=write)
+def decide_plan(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    key: PlanKey,
+    data: dto.PlanDecision,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return plans.decide(
+        db, ids, farm_id, cultivation_id, plan_id, key, data, request.state.request_id
+    )
+
+
+@router.get(PLANS + "/history", response_model=dto.Page[dto.PlanHistoryOut])
+def plan_history(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return plans.history(db, ids, farm_id, cultivation_id, query)
+
+
+@router.get(
+    "/farms/{farm_id}/cultivations/{cultivation_id}/demo-weather",
+    response_model=weather_demo.DemoForecast,
+)
+def demo_weather(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal):
+    return weather_demo.for_cultivation(db, ids, farm_id, cultivation_id)
+
+
+@router.get(WEATHER, response_model=live_weather.WeatherView)
+def weather(farm_id: UUID, cultivation_id: UUID, request: Request, db: DB, ids: Principal):
+    return live_weather.for_cultivation(
+        db, ids, farm_id, cultivation_id, request.app.state.settings
+    )
+
+
+@router.post(WEATHER + "/refresh", response_model=live_weather.WeatherView, dependencies=write)
+def refresh_weather(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    _body: dto.Input,
+    request: Request,
+    db: DB,
+    ids: Principal,
+    limits: Annotated[Limiter, Depends(limiter)],
+):
+    def quota(owned_farm_id):
+        limits.check("weather_farmer", str(ids[0]), 12, 3600)
+        limits.check("weather_farm", str(owned_farm_id), 2, 300)
+
+    return alerts.refresh_forecast(
+        db, ids, farm_id, cultivation_id, request.app.state.settings, quota
+    )
+
+
+@router.get(ALERTS, response_model=alerts.AlertPage)
+def weather_alerts(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return alerts.list_alerts(db, ids, farm_id, cultivation_id, query)
+
+
+@router.patch(ALERTS + "/rule", response_model=alerts.RuleOut, dependencies=write)
+def weather_alert_rule(
+    farm_id: UUID, cultivation_id: UUID, data: alerts.RuleEdit, db: DB, ids: Principal
+):
+    return alerts.save_rule(db, ids, farm_id, cultivation_id, data)
+
+
+@router.post(
+    ALERTS + "/tasks/{task_id}/reschedule",
+    response_model=reschedules.RescheduleOut,
+    dependencies=write,
+)
+def prepare_reschedule(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    task_id: UUID,
+    data: reschedules.RescheduleInput,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return reschedules.prepare(
+        db, ids, farm_id, cultivation_id, task_id, data, request.state.request_id
+    )
+
+
+@router.post(
+    ALERTS + "/reschedules/{plan_id}/decision",
+    response_model=dto.PlanDecisionOut,
+    dependencies=write,
+)
+def decide_reschedule(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    key: PlanKey,
+    data: dto.PlanDecision,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return reschedules.decide(
+        db, ids, farm_id, cultivation_id, plan_id, key, data, request.state.request_id
     )
 
 

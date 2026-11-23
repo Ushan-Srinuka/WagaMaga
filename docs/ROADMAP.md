@@ -62,6 +62,8 @@ Farms, cultivation, knowledge, AI, proposals, weather and case sharing stay outs
 
 ## M1: V0 evidence proof
 
+Signed-in farmers can read [cited chilli answers](KNOWLEDGE_EVALUATION.md#published-chilli-research) for a bounded set of English questions. The reference set includes nursery site, irrigation and soil testing summaries from the Department of Agriculture and answers about two published studies. Farm-specific advice still uses the separate release gate. The [local walkthrough](KNOWLEDGE_EVALUATION.md#portfolio-demo) remains available for the fictional PDF workflow. [Reliability checks](TESTING.md#chilli-questions-and-reliability) cover degraded providers, farm permissions and a synthetic database restore.
+
 Farm Records checkpoint, 18 November 2026: [FARM_RECORDS.md](FARM_RECORDS.md) defines FR-A requirements. FR-B provides schema `0005_farm_records`; FR-C provides owner-only APIs and atomic private history/audit. The authorized FR-D now connects My Farms, farm/cultivation details, observations, stage confirmation, archives and history to those APIs using the existing theme/session. Local component and real backend desktop/mobile journeys pass, including stale writes, foreign-record denial and revoked sessions. No migration/dependency, task, AI or weather flow was added. Next is FR-E review/publication and remote CI under the requested Git workflow; remote CI remains pending. This brings bounded manual records forward from M2 without completing M1/V0, M2 or full AT01/AT02. Preserve the identifiers and evidence-proof gates below; TESTING.md records actual results.
 
 Suggested slices, each independently reviewed and tested:
@@ -96,11 +98,11 @@ Exit criteria: AT01-AT12 evidence; at least 30 labelled evaluation questions; Re
 
 Accepted for future planning on 18 November 2026, not implemented or authorized as the current coding task. The [UI direction](UI_DESIGN.md#planned-farmer-experience-planner-supported-by-chat) makes the planner the farmer's main workspace and chat its explanation/proposal assistant. Existing seven-day bounds, evidence requirements, advisor review, farmer acceptance and execution safeguards remain in scope under FR21-FR30; they are not new features to defer.
 
-Continue the current Farm Records screens and verification first. Then build manual task management, cited answers and one complete proposal/review/acceptance journey. If that journey changes tasks, atomic execution, persisted evidence/decisions, precondition checks and duplicate prevention must work in that same slice. Bring forward supporting infrastructure when needed; these follow-ups do not reorder or replace the existing M1/M2 release gates.
+Manual cultivation tasks are implemented locally under FR10 and FR30. The suggested plan demo covers one fixed recordkeeping addition under FR21–FR24 and FR26–FR29. FR32 includes labelled sample rain and a manual live Open-Meteo forecast. The weather review slice adds owner-set precipitation thresholds, persistent alerts in cultivation, and a confirmed date change with an immutable action, weather evidence and atomic task history. Automatic polling, inbox reminders, agronomic thresholds and advisor clearance remain future work.
 
 ### Combined cultivation diary
 
-Status: planned UI follow-up after cultivation records, observations, manual task history and the first proposal journey work. Present the existing records together rather than introducing an independent source of farm facts. It is not an extra M0/UM1/Farm Records acceptance gate or a new major release.
+Status: a fuller combined diary remains planned. The cultivation history now includes a separate manual task history section. Present the existing records together as later task and proposal flows are completed.
 
 Completion conditions for the later slice:
 

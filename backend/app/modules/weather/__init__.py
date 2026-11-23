@@ -1,1 +1,1 @@
-"""Future weather domain module; no business features in M0."""
+"""Live farm forecasts and the labelled weather fixture."""

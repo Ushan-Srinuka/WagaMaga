@@ -1,16 +1,18 @@
 """FR-C real PostgreSQL authorization, lifecycle, failure and serialization evidence."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from threading import Barrier, Event
 from time import monotonic
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.modules.farms import service
+from app.integrations import open_meteo
+from app.modules.farms import plans, service
 from app.modules.farms.models import (
     CHILLI_ID,
     CropType,
@@ -18,10 +20,13 @@ from app.modules.farms.models import (
     FarmAuditEvent,
     FarmDeletion,
     FarmRevision,
+    TaskPlan,
 )
 from app.modules.identity import service as identity
 from app.modules.identity.models import RefreshSession, User
 from app.modules.identity.security import IdentityError
+from app.modules.weather import live
+from app.modules.weather.models import FarmForecast, WeatherTaskAlert
 
 pytestmark = pytest.mark.integration
 PREFIX = "/api/v1"
@@ -98,6 +103,784 @@ def call(client, method, route, headers, data=None, **kwargs):
     assert response.headers["cache-control"] == "no-store"
     assert response.headers.get("x-request-id")
     return response
+
+
+def test_demo_weather_uses_the_farm_calendar_and_leaves_tasks_unchanged(
+    account_client, farm_records, monkeypatch
+):
+    client = account_client
+    owner = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/demo-weather"
+    # UTC is still November 22 while Colombo is already on November 23.
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 22, 20, 30, tzinfo=UTC))
+    pending = call(
+        client,
+        "POST",
+        cultivation + "/tasks",
+        owner,
+        {"title": "Sample record check", "due_date": "2026-11-24"},
+    )
+    assert pending.status_code == 201
+    sample = call(client, "GET", route, owner)
+    assert sample.status_code == 200
+    assert sample.json() == {
+        "source": "fixture",
+        "fixture_version": "sample-rain-v1",
+        "location": "Synthetic location, not a real farm",
+        "timezone": "Asia/Colombo",
+        "forecast_date": "2026-11-24",
+        "condition": "rain",
+        "rainfall_mm": 18,
+        "review_due_on": "2026-11-24",
+    }
+    assert call(client, "GET", route, owner).json() == sample.json()
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [pending.json()]
+    assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 1
+
+
+def test_demo_weather_respects_cultivation_access_and_archive(account_client, farm_records):
+    client = account_client
+    owner = login(client)
+    outsider = login(client, "other-farmer")
+    admin = login(client, "admin")
+    farm, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/demo-weather"
+    assert call(client, "GET", route, {}).status_code == 401
+    assert call(client, "GET", route, outsider).status_code == 404
+    assert call(client, "GET", route, admin).status_code == 403
+    other_id = farm_records["other-farmer"]["cultivation"]
+    assert (
+        call(client, "GET", f"{farm}/cultivations/{other_id}/demo-weather", owner).status_code
+        == 404
+    )
+
+    assert (
+        call(client, "POST", farm + "/archive", owner, {"expected_version": 1}).status_code == 200
+    )
+    sample = call(client, "GET", route, owner)
+    assert sample.status_code == 200 and sample.json()["review_due_on"] is None
+    name = call(client, "GET", farm, owner).json()["name"]
+    assert (
+        call(
+            client,
+            "POST",
+            farm + "/delete",
+            owner,
+            {"expected_version": 2, "confirmation_name": name},
+        ).status_code
+        == 200
+    )
+    assert call(client, "GET", route, owner).status_code == 404
+
+
+def forecast_days(first_day):
+    return [
+        open_meteo.Day(
+            date=first_day + timedelta(days=offset),
+            minimum_c=23,
+            maximum_c=31,
+            precipitation_mm=8.5 if offset == 0 else 0,
+        )
+        for offset in range(open_meteo.DAYS)
+    ]
+
+
+def test_live_weather_saves_rounded_owned_forecast_and_reuses_it(
+    account_client, farm_records, monkeypatch
+):
+    client = account_client
+    owner = login(client)
+    farm, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/weather"
+    assert (
+        call(
+            client,
+            "PATCH",
+            farm,
+            owner,
+            {
+                "latitude": "8.31141",
+                "longitude": "80.40372",
+                "expected_version": 1,
+            },
+        ).status_code
+        == 200
+    )
+    current = datetime(2026, 11, 22, 20, 30, tzinfo=UTC)
+    monkeypatch.setattr(live, "now", lambda: current)
+    requests = []
+
+    def provider(_settings, latitude, longitude, timezone, first_day):
+        requests.append((latitude, longitude, timezone, first_day))
+        return forecast_days(first_day)
+
+    monkeypatch.setattr(open_meteo, "forecast", provider)
+    assert call(client, "GET", route, owner).json()["status"] == "unfetched"
+    assert requests == []
+    response = call(client, "POST", route + "/refresh", owner, {})
+    assert response.status_code == 200, response.text
+    assert requests == [(Decimal("8.31"), Decimal("80.40"), "Asia/Colombo", date(2026, 11, 23))]
+    forecast = response.json()["forecast"]
+    assert forecast["provider"] == "open-meteo"
+    assert forecast["days"][0]["precipitation_mm"] == 8.5
+    assert forecast["days"][0]["date"] == "2026-11-23"
+    assert call(client, "GET", route, owner).json()["forecast"] == forecast
+    assert call(client, "POST", route + "/refresh", owner, {}).json()["forecast"] == forecast
+    assert len(requests) == 1
+    assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 0
+
+    current += timedelta(hours=3)
+    assert call(client, "GET", route, owner).json()["status"] == "stale"
+
+    def unavailable(*args):
+        raise open_meteo.Unavailable
+
+    monkeypatch.setattr(open_meteo, "forecast", unavailable)
+    assert call(client, "POST", route + "/refresh", owner, {}).status_code == 503
+    saved = call(client, "GET", route, owner).json()
+    assert saved["status"] == "stale" and saved["forecast"] == forecast
+
+
+def test_live_weather_checks_role_location_origin_and_archive_before_fetch(
+    account_client, farm_records, monkeypatch
+):
+    client = account_client
+    owner = login(client)
+    outsider = login(client, "other-farmer")
+    admin = login(client, "admin")
+    farm, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/weather"
+
+    def no_call(*args):
+        pytest.fail("Ineligible forecast request reached the weather provider")
+
+    monkeypatch.setattr(open_meteo, "forecast", no_call)
+    assert call(client, "GET", route, {}).status_code == 401
+    assert call(client, "GET", route, admin).status_code == 403
+    assert call(client, "POST", route + "/refresh", outsider, {}).status_code == 404
+    assert (
+        call(
+            client,
+            "POST",
+            route + "/refresh",
+            owner | {"Origin": "https://example.com"},
+            {},
+        ).status_code
+        == 403
+    )
+    assert call(client, "POST", route + "/refresh", owner, {"latitude": 8.31}).status_code == 422
+    assert (
+        call(
+            client,
+            "PATCH",
+            farm,
+            owner,
+            {
+                "latitude": None,
+                "longitude": None,
+                "expected_version": 1,
+            },
+        ).status_code
+        == 200
+    )
+    assert call(client, "GET", route, owner).json()["status"] == "needs_coordinates"
+    assert call(client, "POST", route + "/refresh", owner, {}).status_code == 409
+    assert (
+        call(client, "POST", farm + "/archive", owner, {"expected_version": 2}).status_code == 200
+    )
+    assert not call(client, "GET", route, owner).json()["can_refresh"]
+    assert call(client, "POST", route + "/refresh", owner, {}).status_code == 409
+
+
+def test_live_weather_discards_forecast_after_location_changes(
+    account_client, accounts, farm_records, monkeypatch
+):
+    client = account_client
+    owner = login(client)
+    ids = farm_records["farmer"]
+    _, cultivation, _ = path(ids)
+    route = cultivation + "/weather"
+
+    def provider(_settings, _latitude, _longitude, _timezone, first_day):
+        with accounts[2].begin() as conn:
+            conn.execute(text("UPDATE farms SET latitude=8.71 WHERE id=:id"), {"id": ids["farm"]})
+        return forecast_days(first_day)
+
+    monkeypatch.setattr(open_meteo, "forecast", provider)
+    response = call(client, "POST", route + "/refresh", owner, {})
+    assert response.status_code == 409 and response.json()["code"] == "WEATHER_CONTEXT_CHANGED"
+    with Session(accounts[1]) as db:
+        assert db.get(FarmForecast, ids["farm"]) is None
+    assert call(client, "GET", route, owner).json()["status"] == "unfetched"
+
+
+@pytest.fixture
+def weather_review(account_client, farm_records, monkeypatch):
+    client = account_client
+    owner = login(client)
+    farm, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/weather"
+    alerts = route + "/alerts"
+    clock = {"stamp": datetime(2026, 11, 23, 3, tzinfo=UTC), "precipitation": 8.5, "calls": 0}
+    monkeypatch.setattr(live, "now", lambda: clock["stamp"])
+
+    def provider(_settings, _latitude, _longitude, _timezone, first_day):
+        clock["calls"] += 1
+        days = forecast_days(first_day)
+        days[0].precipitation_mm = clock["precipitation"]
+        return days
+
+    monkeypatch.setattr(open_meteo, "forecast", provider)
+    rule = call(
+        client, "PATCH", alerts + "/rule", owner, {"threshold_mm": 8, "expected_version": 0}
+    )
+    assert rule.status_code == 200, rule.text
+    forecast = call(client, "POST", route + "/refresh", owner, {})
+    assert forecast.status_code == 200, forecast.text
+    created = call(
+        client,
+        "POST",
+        cultivation + "/tasks",
+        owner,
+        {
+            "title": "Synthetic weather task",
+            "due_date": "2026-11-23",
+        },
+    )
+    assert created.status_code == 201, created.text
+    return client, owner, farm, cultivation, route, alerts, created.json(), clock
+
+
+def prepare_weather_review(client, owner, route, task, alert, proposed="2026-11-24"):
+    return call(
+        client,
+        "POST",
+        route + f"/tasks/{task['id']}/reschedule",
+        owner,
+        {
+            "expected_version": alert["task_version"],
+            "expected_rule_version": alert["rule_version"],
+            "expected_forecast_fetched_at": alert["forecast_fetched_at"],
+            "proposed_due_date": proposed,
+        },
+    )
+
+
+def decide_weather_review(client, owner, route, plan, outcome="accepted"):
+    return call(
+        client,
+        "POST",
+        route + f"/reschedules/{plan['id']}/decision",
+        owner | {"Idempotency-Key": plan["id"]},
+        {
+            "expected_version": plan["version"],
+            "action_hash": plan["action_hash"],
+            "outcome": outcome,
+        },
+    )
+
+
+def test_weather_alert_updates_one_identity_and_hides_closed_tasks(weather_review, accounts):
+    client, owner, _, cultivation, route, alerts, task, clock = weather_review
+    outsider = login(client, "other-farmer")
+    assert call(client, "GET", alerts, outsider).status_code == 404
+    first = call(client, "GET", alerts, owner).json()
+    assert first["total"] == 1 and first["items"][0]["task_id"] == task["id"]
+    assert first["items"][0]["precipitation_mm"] == 8.5
+    assert call(client, "POST", route + "/refresh", owner, {}).status_code == 200
+    assert clock["calls"] == 1
+    assert call(client, "GET", alerts, owner).json()["items"] == first["items"]
+
+    clock["stamp"] += timedelta(minutes=35)
+    clock["precipitation"] = 10.1
+    assert call(client, "POST", route + "/refresh", owner, {}).status_code == 200
+    changed = call(client, "GET", alerts, owner).json()
+    assert changed["total"] == 1 and changed["items"][0]["precipitation_mm"] == 10.1
+    with accounts[1].connect() as db:
+        assert db.scalar(select(func.count()).select_from(WeatherTaskAlert)) == 1
+    stale_rule = {"threshold_mm": 20, "expected_version": 0}
+    assert call(client, "PATCH", alerts + "/rule", owner, stale_rule).status_code == 409
+    disabled = call(
+        client,
+        "PATCH",
+        alerts + "/rule",
+        owner,
+        {
+            "threshold_mm": None,
+            "expected_version": 1,
+        },
+    )
+    assert disabled.status_code == 200 and not call(client, "GET", alerts, owner).json()["items"]
+    assert (
+        call(
+            client,
+            "PATCH",
+            alerts + "/rule",
+            owner,
+            {
+                "threshold_mm": 8,
+                "expected_version": 2,
+            },
+        ).status_code
+        == 200
+    )
+    assert call(client, "GET", alerts, owner).json()["total"] == 1
+    assert (
+        call(
+            client,
+            "POST",
+            cultivation + f"/tasks/{task['id']}/status",
+            owner,
+            {
+                "status": "completed",
+                "expected_version": 1,
+            },
+        ).status_code
+        == 200
+    )
+    assert call(client, "GET", alerts, owner).json()["total"] == 0
+
+
+def test_weather_reschedule_uses_exact_plan_and_commits_once(weather_review, accounts):
+    client, owner, _, cultivation, _, alerts, task, _ = weather_review
+    source = call(client, "GET", alerts, owner).json()["items"][0]
+    preview = prepare_weather_review(client, owner, alerts, task, source)
+    assert preview.status_code == 200, preview.text
+    plan = preview.json()
+    assert plan["current_due_date"] == task["due_date"]
+    assert plan["proposed_due_date"] == "2026-11-24"
+    assert prepare_weather_review(client, owner, alerts, task, source).json() == plan
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [task]
+    outsider = login(client, "other-farmer")
+    assert decide_weather_review(client, outsider, alerts, plan).status_code == 404
+    assert (
+        decide_weather_review(client, owner, alerts, plan | {"action_hash": "0" * 64}).status_code
+        == 409
+    )
+    barrier = Barrier(2)
+
+    def accept(_):
+        barrier.wait(timeout=10)
+        return decide_weather_review(client, owner, alerts, plan)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = pool.map(accept, range(2))
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["task_id"] == task["id"] and first.json()["task_version"] == 2
+    saved = call(client, "GET", cultivation + "/tasks", owner).json()["items"]
+    assert len(saved) == 1 and saved[0]["due_date"] == plan["proposed_due_date"]
+    assert call(client, "GET", alerts, owner).json()["total"] == 0
+    history = call(client, "GET", cultivation + "/task-plans/history", owner).json()["items"]
+    assert len(history) == 1 and history[0]["action_type"] == "reschedule_task"
+    assert history[0]["previous_due_date"] == task["due_date"]
+    assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 2
+    with Session(accounts[1]) as db:
+        evidence = db.get(TaskPlan, UUID(plan["id"])).weather_evidence
+        assert evidence["precipitation_mm"] == 8.5 and evidence["threshold_mm"] == 8
+
+
+def test_weather_reschedule_rejects_superseded_expired_and_stale_inputs(weather_review):
+    client, owner, _, cultivation, _, alerts, task, clock = weather_review
+    source = call(client, "GET", alerts, owner).json()["items"][0]
+    older = prepare_weather_review(client, owner, alerts, task, source).json()
+    newer = prepare_weather_review(client, owner, alerts, task, source, "2026-11-25")
+    assert newer.status_code == 200, newer.text
+    assert decide_weather_review(client, owner, alerts, older).status_code == 409
+    rejected = decide_weather_review(client, owner, alerts, newer.json(), "rejected")
+    assert rejected.status_code == 200 and rejected.json()["task_id"] is None
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [task]
+
+    pending = prepare_weather_review(client, owner, alerts, task, source).json()
+    assert (
+        call(
+            client,
+            "PATCH",
+            alerts + "/rule",
+            owner,
+            {
+                "threshold_mm": 7,
+                "expected_version": 1,
+            },
+        ).status_code
+        == 200
+    )
+    assert decide_weather_review(client, owner, alerts, pending).status_code == 409
+    assert prepare_weather_review(client, owner, alerts, task, source).status_code == 409
+
+    source = call(client, "GET", alerts, owner).json()["items"][0]
+    edited = prepare_weather_review(client, owner, alerts, task, source).json()
+    assert (
+        call(
+            client,
+            "PATCH",
+            cultivation + f"/tasks/{task['id']}",
+            owner,
+            {
+                "title": "Updated task",
+                "due_date": task["due_date"],
+                "expected_version": 1,
+            },
+        ).status_code
+        == 200
+    )
+    assert decide_weather_review(client, owner, alerts, edited).status_code == 409
+    source = call(client, "GET", alerts, owner).json()["items"][0]
+    expired = prepare_weather_review(client, owner, alerts, task, source).json()
+    clock["stamp"] += timedelta(hours=3)
+    assert call(client, "GET", alerts, owner).json()["total"] == 0
+    assert decide_weather_review(client, owner, alerts, expired).status_code == 409
+    assert (
+        call(client, "GET", cultivation + "/tasks", owner).json()["items"][0]["due_date"]
+        == task["due_date"]
+    )
+
+
+def test_weather_reschedule_rolls_back_date_and_task_history_on_failed_decision(
+    weather_review, accounts
+):
+    client, owner, _, cultivation, _, alerts, task, _ = weather_review
+    source = call(client, "GET", alerts, owner).json()["items"][0]
+    plan = prepare_weather_review(client, owner, alerts, task, source).json()
+    with accounts[2].begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE task_plan_decisions ADD CONSTRAINT test_weather_review_failure "
+                "CHECK (false) NOT VALID"
+            )
+        )
+    try:
+        assert decide_weather_review(client, owner, alerts, plan).status_code == 503
+        assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [task]
+        assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 1
+        assert call(client, "GET", cultivation + "/task-plans/history", owner).json()["total"] == 0
+    finally:
+        with accounts[2].begin() as conn:
+            conn.execute(
+                text("ALTER TABLE task_plan_decisions DROP CONSTRAINT test_weather_review_failure")
+            )
+    assert decide_weather_review(client, owner, alerts, plan).status_code == 200
+
+
+def review_plan(client, route, headers):
+    response = call(client, "POST", route, headers, {})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def plan_decision(client, route, headers, plan, outcome="accepted", **overrides):
+    data = {
+        "expected_version": plan["version"],
+        "action_hash": plan["action_hash"],
+        "outcome": outcome,
+    }
+    return call(
+        client,
+        "POST",
+        route + f"/{plan['id']}/decision",
+        headers | {"Idempotency-Key": plan["id"]},
+        data | overrides,
+    )
+
+
+def test_task_plan_acceptance_creates_exactly_one_task(account_client, farm_records):
+    client = account_client
+    owner = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/task-plans"
+    assert call(client, "GET", route, owner).json() == {"plan": None}
+    assert call(client, "POST", route, owner, {"title": "Unreviewed action"}).status_code == 422
+    plan = review_plan(client, route, owner)
+    assert plan["state"] == "pending" and plan["decision"] is None
+    assert review_plan(client, route, owner) == plan
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["total"] == 0
+    assert plan_decision(client, route, owner, plan, expected_version=2).status_code == 409
+    assert plan_decision(client, route, owner, plan, action_hash="0" * 64).status_code == 409
+    request = {
+        "expected_version": plan["version"],
+        "action_hash": plan["action_hash"],
+        "outcome": "accepted",
+    }
+    wrong_key = owner | {"Idempotency-Key": str(uuid4())}
+    assert (
+        call(client, "POST", route + f"/{plan['id']}/decision", wrong_key, request).status_code
+        == 409
+    )
+
+    barrier = Barrier(2)
+
+    def accept(_):
+        barrier.wait(timeout=10)
+        return plan_decision(client, route, owner, plan)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = pool.map(accept, range(2))
+    assert first.status_code == second.status_code == 200
+    decision = first.json()
+    assert decision == second.json()
+    assert decision["outcome"] == "accepted" and decision["task_id"]
+    assert plan_decision(client, route, owner, plan, "rejected").status_code == 409
+    tasks = call(client, "GET", cultivation + "/tasks", owner).json()["items"]
+    assert [(t["id"], t["title"], t["due_date"]) for t in tasks] == [
+        (decision["task_id"], plan["title"], plan["due_date"])
+    ]
+    assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 1
+    events = call(client, "GET", route + "/history", owner).json()["items"]
+    assert len(events) == 1 and events[0]["evidence_text"] == plan["evidence_text"]
+    assert events[0]["task_id"] == decision["task_id"]
+    saved = call(client, "GET", route, owner).json()["plan"]
+    assert saved["state"] == "accepted" and saved["decision"] == decision
+
+
+def test_task_plan_rejection_and_private_parent_scope(account_client, farm_records):
+    client = account_client
+    owner = login(client)
+    outsider = login(client, "other-farmer")
+    admin = login(client, "admin")
+    farm, cultivation, _ = path(farm_records["farmer"])
+    _, other, _ = path(farm_records["other-farmer"])
+    route = cultivation + "/task-plans"
+    plan = review_plan(client, route, owner)
+    assert call(client, "GET", route, admin).status_code == 403
+    assert call(client, "GET", route + "/history", outsider).status_code == 404
+    assert plan_decision(client, route, outsider, plan).status_code == 404
+    assert plan_decision(client, other + "/task-plans", outsider, plan).status_code == 404
+    rejection = plan_decision(client, route, owner, plan, "rejected")
+    assert rejection.status_code == 200 and rejection.json()["task_id"] is None
+    assert plan_decision(client, route, owner, plan, "rejected").json() == rejection.json()
+    assert plan_decision(client, route, owner, plan).status_code == 409
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["total"] == 0
+
+    pending = review_plan(client, route, owner)
+    assert pending["id"] != plan["id"]
+    assert (
+        call(client, "POST", farm + "/archive", owner, {"expected_version": 1}).status_code == 200
+    )
+    assert plan_decision(client, route, owner, pending).status_code == 409
+    assert call(client, "POST", route, owner, {}).status_code == 409
+    assert call(client, "GET", route + "/history", owner).json()["total"] == 1
+    name = call(client, "GET", farm, owner).json()["name"]
+    assert (
+        call(
+            client,
+            "POST",
+            farm + "/delete",
+            owner,
+            {"expected_version": 2, "confirmation_name": name},
+        ).status_code
+        == 200
+    )
+    assert call(client, "GET", route, owner).status_code == 404
+    assert call(client, "GET", route + "/history", owner).status_code == 404
+
+
+def test_task_plan_rechecks_changed_expired_and_ineligible_context(
+    account_client, farm_records, monkeypatch
+):
+    client = account_client
+    owner = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/task-plans"
+    plan = review_plan(client, route, owner)
+    edited = call(
+        client,
+        "PATCH",
+        cultivation,
+        owner,
+        {"soil_notes": "Updated context", "expected_version": 1},
+    )
+    assert edited.status_code == 200
+    assert call(client, "GET", route, owner).json()["plan"]["state"] == "stale"
+    assert plan_decision(client, route, owner, plan).status_code == 409
+
+    replacement = review_plan(client, route, owner)
+    assert replacement["id"] != plan["id"]
+    with monkeypatch.context() as patch:
+        patch.setattr(plans, "EVIDENCE_CODE", "withdrawn_fixture")
+        assert plan_decision(client, route, owner, replacement).status_code == 409
+    with monkeypatch.context() as patch:
+        future = plans.now() + timedelta(days=2)
+        patch.setattr(plans, "now", lambda: future)
+        assert call(client, "GET", route, owner).json()["plan"]["state"] == "expired"
+        assert plan_decision(client, route, owner, replacement).status_code == 409
+    assert call(client, "GET", route + "/history", owner).json()["total"] == 0
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["total"] == 0
+    manual_task = {"title": replacement["title"], "due_date": replacement["due_date"]}
+    assert call(client, "POST", cultivation + "/tasks", owner, manual_task).status_code == 201
+    assert plan_decision(client, route, owner, replacement).status_code == 409
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["total"] == 1
+
+
+def test_task_plan_acceptance_rolls_back_task_and_history_on_decision_failure(
+    account_client, accounts, farm_records
+):
+    client = account_client
+    owner = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/task-plans"
+    plan = review_plan(client, route, owner)
+    with accounts[2].begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE task_plan_decisions ADD CONSTRAINT test_plan_failure "
+                "CHECK (false) NOT VALID"
+            )
+        )
+    try:
+        assert plan_decision(client, route, owner, plan).status_code == 503
+        assert call(client, "GET", route, owner).json()["plan"]["state"] == "pending"
+        assert call(client, "GET", route + "/history", owner).json()["total"] == 0
+        assert call(client, "GET", cultivation + "/tasks", owner).json()["total"] == 0
+        assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 0
+    finally:
+        with accounts[2].begin() as conn:
+            conn.execute(text("ALTER TABLE task_plan_decisions DROP CONSTRAINT test_plan_failure"))
+    assert plan_decision(client, route, owner, plan).status_code == 200
+
+
+def test_manual_task_lifecycle_and_history(account_client, farm_records):
+    client = account_client
+    headers = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/tasks"
+    first = {"title": "  Check synthetic field flags  ", "due_date": "2026-11-24"}
+    late = {"title": "Copy plot labels", "due_date": "2026-11-29"}
+    for invalid in (
+        first | {"title": "  "},
+        first | {"due_date": "2026-02-30"},
+        first | {"due_date": "2026-11-24T00:00:00Z"},
+        first | {"status": "completed"},
+    ):
+        assert call(client, "POST", route, headers, invalid).status_code == 422
+    late_task = call(client, "POST", route, headers, late)
+    created = call(client, "POST", route, headers, first)
+    assert late_task.status_code == created.status_code == 201
+    task = created.json()
+    assert (task["title"], task["status"], task["version"]) == (
+        first["title"].strip(),
+        "pending",
+        1,
+    )
+    listed = call(client, "GET", route + "?page_size=1", headers).json()
+    assert listed["total"] == 2 and [item["id"] for item in listed["items"]] == [task["id"]]
+    task_path = route + f"/{task['id']}"
+    unchanged = call(client, "PATCH", task_path, headers, first | {"expected_version": 1})
+    assert unchanged.status_code == 200 and unchanged.json()["version"] == 1
+    edit = {"title": task["title"] + " again", "due_date": "2026-11-25", "expected_version": 1}
+    edited = call(client, "PATCH", task_path, headers, edit)
+    assert edited.status_code == 200 and edited.json()["version"] == 2
+    transition = {"status": "completed", "expected_version": 2}
+    stale = call(
+        client, "POST", task_path + "/status", headers, transition | {"expected_version": 1}
+    )
+    assert stale.status_code == 409 and stale.json()["code"] == "RECORD_VERSION_CONFLICT"
+    completed = call(client, "POST", task_path + "/status", headers, transition)
+    assert completed.status_code == 200 and completed.json()["status"] == "completed"
+    repeat = call(client, "POST", task_path + "/status", headers, transition)
+    assert repeat.status_code == 409
+    closed = call(client, "PATCH", task_path, headers, edit | {"expected_version": 3})
+    assert closed.status_code == 409 and closed.json()["code"] == "TASK_CLOSED"
+    late_path = route + f"/{late_task.json()['id']}/status"
+    cancelled = call(
+        client, "POST", late_path, headers, {"status": "cancelled", "expected_version": 1}
+    )
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    assert call(client, "GET", route, headers).json()["total"] == 0
+    assert call(client, "GET", route + "?status=completed", headers).json()["total"] == 1
+    assert call(client, "GET", route + "?status=cancelled", headers).json()["total"] == 1
+    assert call(client, "GET", route + "?status=all", headers).json()["total"] == 2
+    events = call(client, "GET", route + "/history", headers).json()
+    assert events["total"] == 5
+    own_events = [item for item in events["items"] if item["task_id"] == task["id"]]
+    assert [(item["action"], item["title"], item["due_date"]) for item in own_events] == [
+        ("completed", edit["title"], edit["due_date"]),
+        ("edited", edit["title"], edit["due_date"]),
+        ("created", task["title"], task["due_date"]),
+    ]
+
+
+def test_task_owner_archive_and_delete_boundaries(account_client, farm_records):
+    client = account_client
+    owner = login(client)
+    outsider = login(client, "other-farmer")
+    admin = login(client, "admin")
+    farm, cultivation, _ = path(farm_records["farmer"])
+    _, other_cultivation, _ = path(farm_records["other-farmer"])
+    route = cultivation + "/tasks"
+    data = {"title": "Synthetic greenhouse task", "due_date": "2026-11-24"}
+    created = call(client, "POST", route, owner, data)
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+    assert call(client, "GET", route, admin).status_code == 403
+    assert call(client, "GET", route + "/history", outsider).status_code == 404
+    assert call(client, "POST", route, outsider, data).status_code == 404
+    command = {"status": "completed", "expected_version": 1}
+    assert (
+        call(
+            client, "POST", other_cultivation + f"/tasks/{task_id}/status", outsider, command
+        ).status_code
+        == 404
+    )
+    assert (
+        call(client, "POST", farm + "/archive", owner, {"expected_version": 1}).status_code == 200
+    )
+    assert call(client, "POST", route, owner, data).status_code == 409
+    assert call(client, "POST", route + f"/{task_id}/status", owner, command).status_code == 409
+    assert call(client, "GET", route + "/history", owner).json()["total"] == 1
+    name = call(client, "GET", farm, owner).json()["name"]
+    assert (
+        call(
+            client,
+            "POST",
+            farm + "/delete",
+            owner,
+            {"expected_version": 2, "confirmation_name": name},
+        ).status_code
+        == 200
+    )
+    assert call(client, "GET", route, owner).status_code == 404
+    assert call(client, "GET", route + "/history", owner).status_code == 404
+
+
+def test_task_history_failure_rolls_back_creation_and_status(
+    account_client, accounts, farm_records
+):
+    client = account_client
+    headers = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    route = cultivation + "/tasks"
+    data = {"title": "Synthetic rollback task", "due_date": "2026-11-24"}
+    created = call(client, "POST", route, headers, data)
+    assert created.status_code == 201
+    task = created.json()
+    # Force a history write to fail after the task itself has been flushed.
+    with accounts[2].begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE farm_task_events ADD CONSTRAINT test_task_event_failure "
+                "CHECK (false) NOT VALID"
+            )
+        )
+    try:
+        assert call(client, "POST", route, headers, data).status_code == 503
+        assert (
+            call(
+                client,
+                "POST",
+                route + f"/{task['id']}/status",
+                headers,
+                {"status": "completed", "expected_version": 1},
+            ).status_code
+            == 503
+        )
+        assert call(client, "GET", route + "?status=all", headers).json()["items"] == [task]
+        assert call(client, "GET", route + "/history", headers).json()["total"] == 1
+    finally:
+        with accounts[2].begin() as conn:
+            conn.execute(
+                text("ALTER TABLE farm_task_events DROP CONSTRAINT test_task_event_failure")
+            )
 
 
 def test_full_manual_record_journey_and_exact_history(account_client, accounts):

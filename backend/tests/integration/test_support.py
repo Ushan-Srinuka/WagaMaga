@@ -468,7 +468,7 @@ def test_messages_events_and_ticket_identity_are_immutable(accounts, account_cli
     with accounts[2].begin() as conn:
         config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
         config.attributes["connection"] = conn
-        with pytest.raises(RuntimeError, match="support evidence"):
+        with pytest.raises(RuntimeError, match="support evidence"), conn.begin_nested():
             command.downgrade(config, "0006_farm_lifecycle")
 
 

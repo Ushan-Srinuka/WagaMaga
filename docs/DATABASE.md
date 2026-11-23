@@ -1,16 +1,28 @@
 # Database and migrations
 
-Status: migrations `0001_foundation` through `0007_support` enable pgvector, UM1 identity/accounts/notifications, farm persistence and append-only workspace deletion. Owner-only APIs/screens include farm restore/delete; AI tables remain unimplemented. Compose uses separate development/test databases and restricted application credentials. TESTING.md records actual evidence and remote CI limitations.
+Migration `0015_knowledge_translations` extends the evidence review page range to 1–100. It stores an optional approved English translation in the same append-only decision as its exact source quote. A database constraint restricts translations to suitable decisions with a quote. Downgrade refuses while a translation or review past page 20 exists.
+
+Migration `0012_chilli_pilot` adds an approved excerpt to each evidence decision and append-only evaluation runs. Run fingerprints bind the question, policy, model, review revision, candidates and approved excerpts. Only a matching current run can count toward pilot release.
+
+Migration `0011_knowledge_eval` records append-only evidence labels by question and revision. Page labels bind to a PDF version and page, and case-level missing labels omit both. The app can select and insert decisions. Source identity, reviewer identity, reason, request and timestamp remain traceable. Downgrade is blocked when review decisions exist.
+
+Migration `0010_discard_pdf` adds the discarded status and preserves the original file, version and decision history. Discarding updates the lifecycle revision and inserts its decision in one transaction. Only unpublished PDFs can be discarded through the admin API.
+
+Migration `0008_knowledge_demo` adds synthetic guide versions and lifecycle decisions. The app role can update only the version's status and revision. Its content and checksum remain fixed, and decision rows are append-only through app grants. Downgrade is blocked while demonstration history exists.
+
+Migration `0009_knowledge_pdf` adds the private `knowledge_source_pdfs` relation for originals, queued work and page extraction results. Upload and queue creation share one transaction. A worker claims a queued row with `FOR UPDATE SKIP LOCKED`. If the transaction rolls back, the row remains queued. Completed results are immutable and a PDF version's checksum covers original bytes.
+
+Status: migrations `0001_foundation` through `0015_knowledge_translations` enable pgvector, accounts, private farm records, support and the synthetic knowledge lifecycle. Migration 0013 permits bounded source PDFs up to 6 MiB; migration 0014 adds withdrawn-PDF deletion. Compose uses separate development/test databases and restricted application credentials. TESTING.md records actual evidence and remote CI limitations.
 
 ## Storage boundaries
 
 Count reporting (D30) adds no schema change. Dedicated services read aggregate counts using one PostgreSQL statement snapshot per report, filtering workspace-deleted farms and removed/former-farmer owners and handling inherited crop archives. No raw farm fields are projected. A successful response commits a minimal `report_viewed` account-audit row; no counts, farm IDs, locations or message content enter that audit. Live admin checks/locks remain distinct from owner-only record services. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md).
 
-`0007_support` is the current head. It adds `support_tickets` (requester/category/subject/status/version/times), append-only `support_messages` (submitted text and author-role provenance) and `support_events` (minimal operation/status/version/request-ID evidence). Owner/update and status/update indexes support bounded queries; ticket-version uniqueness protects messages/events. Restricted FKs and a ticket identity trigger preserve context. The app has SELECT/INSERT/UPDATE on tickets, SELECT/INSERT only on messages/events, and no DELETE/TRUNCATE. Support notices add the allowed `support_updated` event without storing private text in notifications. There are no farm or AI-chat FKs; explicit sharing is limited to submitted messages. Downgrade refuses while requests/notices exist; real retention/erasure periods remain open. Services enforce owner/admin scope before every read/count or mutation and commit messages/events/notifications atomically. See [SUPPORT.md](SUPPORT.md).
+`0007_support` adds `support_tickets` (requester/category/subject/status/version/times), append-only `support_messages` (submitted text and author-role provenance) and `support_events` (minimal operation/status/version/request-ID evidence). Owner/update and status/update indexes support bounded queries; ticket-version uniqueness protects messages/events. Restricted FKs and a ticket identity trigger preserve context. The app has SELECT/INSERT/UPDATE on tickets, SELECT/INSERT only on messages/events, and no DELETE/TRUNCATE. Support notices add the allowed `support_updated` event without storing private text in notifications. There are no farm or AI-chat FKs; explicit sharing is limited to submitted messages. Downgrade refuses while requests/notices exist; real retention/erasure periods remain open. Services enforce owner/admin scope before every read/count or mutation and commit messages/events/notifications atomically. See [SUPPORT.md](SUPPORT.md).
 
 Farm lifecycle migration `0006_farm_lifecycle` adds the `farm_deletions` table with a farm primary-key/FK, `deleted_by` user FK, finite UTC `deleted_at` and positive `entity_version`. The app can SELECT/INSERT markers only. Restore/delete add `farm_restored`/`farm_deleted` private audit operations without modifying existing snapshot shapes or rows. Owner services exclude marked farms before list counts and all parent-chain access. Delete atomically records the new farm version/revision/event and marker; records and child evidence stay stored. Downgrade refuses while markers or restore/delete evidence exist, so a schema rollback cannot resurrect a removed farm. This is workspace deletion, not physical data erasure or a retention policy; see D28.
 
-Records schema: [FARM_RECORDS.md](FARM_RECORDS.md) and D26 define the implemented FR-B tables. Child ownership derives through farms.farmer_id; restricted FKs preserve user tombstones/history. Private revisions/events stay outside administrator account-audit viewing. Readiness expects `0007_support`; database readiness alone is not an owner-authorization check.
+Records schema: [FARM_RECORDS.md](FARM_RECORDS.md) and D26 define the implemented FR-B tables. Child ownership derives through farms.farmer_id; restricted FKs preserve user tombstones/history. Private revisions/events stay outside administrator account-audit viewing. Readiness expects `0015_knowledge_translations`; database readiness alone is not an owner-authorization check.
 
 The subsequent FR-C services expose authorized routes using this schema. They recheck live actors/sessions, resolve full owner-scoped parent chains and lock user/session/parents consistently before applying optimistic/archival transitions. Actual mutations append the record revision and minimized farm audit event in the same transaction; function-scoped HTTP transactions commit before a success response. Read-only and no-op calls do not create evidence. Shared database credentials still have no row-level ownership guarantee; callers must use these services. Catalogue writes remain migration/operator-only, and timezone validation uses PostgreSQL's existing catalogue.
 
@@ -46,7 +58,29 @@ Restricted FKs prevent deletion of referenced users, farms, crops, cultivations 
 
 The app has SELECT/INSERT/UPDATE on farms/cultivations/observations, SELECT on crop_types and SELECT/INSERT on revisions/farm_audit_events. It cannot DELETE/TRUNCATE these tables or UPDATE revisions/audit. The separate migration role controls schema, seeds and any future retention process. Shared app credentials do not enforce row ownership: FR-C services scope every query, enforce optimistic/archival transitions and append complete revisions/audit in one transaction. PostgreSQL tests now cover both persistence and the API's immediate/deferred rollback boundary. No database row-level-security guarantee is claimed.
 
+### Manual cultivation tasks
+
+Migration `0016_manual_farm_tasks` adds `farm_tasks` and `farm_task_events` with restricted foreign keys. Tasks store a cultivation, title, local calendar due date, status, version and UTC timestamps. Tasks are indexed by cultivation, due date and ID. The update trigger preserves the parent and creation time and permits only a single version increment from a pending task.
+
+The event primary key is task ID and task version. An event stores the title and due date at the change, action, actor, request ID and UTC timestamp. The application role can append and read events and update only task state fields. It cannot remove tasks or rewrite events. A migration downgrade refuses to discard saved task history.
+
+### Suggested task plan demo
+
+Migration `0017_suggested_task_plans` adds two append-only tables. `task_plans` saves the fixed create action, title and due date, SHA-256 action hash, version, sample evidence code and text, parent versions, author, request ID and expiry. `task_plan_decisions` binds to the exact plan ID, version and hash with a composite foreign key. Its primary key allows one decision per plan. An accepted decision must reference its unique created task and a rejected decision has no task. The decision records the actor, request ID and time and serves as the execution receipt.
+
+The application role receives SELECT and INSERT only for both tables. The plan service serializes decisions using the same owner and parent locks as manual task writes. Task creation, its task event and the execution receipt share one transaction. The migration refuses a downgrade while any plan exists, including an undecided plan.
+
+### Live farm forecast cache
+
+Migration `0018_live_farm_weather` adds `farm_forecasts` with one current snapshot per farm. It stores rounded coordinates, timezone, provider, UTC fetch time and three normalized daily measurements in JSONB. Cultivations on the same farm share the snapshot. The app role can read, insert and replace snapshot fields. It cannot change the farm key or delete the row. A cache entry for a different location or timezone is excluded from reads.
+
+Refresh calls the provider before taking write locks. The service acquires the actor, session and parent locks, rechecks the location and day, and replaces the snapshot only after provider validation. This cache contains no proposal or task evidence links, so a schema downgrade can discard it without altering farm records or task history.
+
 ## Integrity rules
+
+Migration `0019_weather_task_review` adds `weather_alert_rules` (one versioned setting per cultivation) and `weather_task_alerts` (one row per task and due date). A repeated check refreshes the stored evidence rather than adding another row. Rules and alert state can change under restricted column grants. Current reads require a pending task, active parent, qualifying threshold and matching fresh forecast.
+
+Weather date proposals reuse the append-only `task_plans` and `task_plan_decisions` tables. A date proposal stores the task ID/version, original and proposed dates, the applied threshold and a normalized snapshot of the forecast evidence. Each accepted decision points to a unique task event and version through a composite foreign key. Existing accepted example plans are backfilled to their original task creation event. Downgrade refuses while a weather date proposal exists.
 
 - UUID primary keys, explicit foreign keys and UTC event timestamps.
 - Store task dates as local dates with explicit farm timezone; derive reminder instants deliberately.
@@ -75,3 +109,5 @@ Include the necessary tables and constraints in the first slice that changes tas
 ## Verification and lifecycle
 
 Test migration upgrades, foreign keys, uniqueness, stale versions, concurrent execution, rollback and audit permissions using real PostgreSQL connections. Back up both database and document files and verify a combined restore. Retention/account deletion durations remain open; do not implement cascading deletion that destroys required approval evidence without a declared policy.
+
+Migration `0014_delete_withdrawn_pdf` lets an administrator delete a withdrawn PDF by clearing its original and extracted page JSON in one audited status transition. It keeps the source title/checksum, lifecycle decision rows and separate evaluation decisions/approved excerpts; the deleted version is hidden from source lists and page routes. A database trigger permits only the worker's one-time queued completion or the guarded delete state, and the application role receives only the columns needed for those transitions. Downgrade refuses after deletion evidence exists. This removes the PDF and full extracted pages but is not erasure of review excerpts or audit history.

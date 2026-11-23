@@ -1,8 +1,113 @@
 # Testing strategy
 
+## Chilli questions and reliability
+
+The 23 November 2026 local run passed 319 backend tests with PostgreSQL/pgvector and 79 frontend tests. Coverage includes all seven cited questions, unsupported plot-specific requests, the local answer during a simulated Gemini outage, saved forecast preservation during a simulated Open-Meteo outage, and owner-only access to private farm records. Ruff, frontend lint, Prettier, the production build, Alembic drift and worker readiness checks passed. With the [isolated Edge settings](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e` passed 50 desktop and mobile journeys, including both versions of the chilli question journey. The two opt-in live Gemini journeys were skipped.
+
+From the repository root with the local PostgreSQL container running:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-reliability'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache"
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py::test_weather_reschedule_uses_exact_plan_and_commits_once
+Get-Content -Raw scripts/database/verify_test_restore.sh | docker compose exec -T db sh -s
+```
+
+Run the focused seed immediately before the restore drill. The test resets the disposable test fixtures. The drill backs up the synthetic database with `pg_dump`, uses `pg_restore` on a fresh temporary database and compares schema revision, pgvector version, farm entries, forecasts, alerts, task revisions and bound decisions. It checks that the application role still has the expected history grants. The database and archive created by the drill are removed when it exits. The backend GitHub Actions job includes these steps; the hosted workflow has yet to run this revision. Provider failure checks use doubles. This drill exercises database recovery of synthetic farm records and task evidence.
+
+## Earlier checks
+
+**Weather alerts and date review.** Twenty selected PostgreSQL tests passed for live and sample weather, task planning, schema rebuild and identity regressions. They cover deduplication across refreshes and changed measurements, clearing a threshold, closed tasks, owner checks, exact review binding, superseded and stale reviews, repeated or simultaneous acceptance and rollback if writing the decision fails. The local API reported ready on `0019_weather_task_review` and `alembic check` reported no drift.
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-weather-review'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py tests/integration/test_farms.py tests/integration/test_identity.py -k 'weather or task or upgrade_preserves or migration_fresh_rebuild or rate_limit_expiry_and_auth_endpoint_caps'
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+```
+
+All 79 frontend tests, Ruff, Prettier, frontend lint and the production build passed. With the isolated Edge settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (sets a weather alert|fetches a farm forecast|reviews suggested plans)'` passed six desktop and mobile journeys. The new journey uses deterministic forecast data and verifies the saved threshold, a single alert after refresh, an unchanged task during comparison, the confirmed date after reload and both dates in plan history. Remote CI was not run.
+
+**Live farm weather.** The 25 selected backend tests and 79 frontend tests passed. Backend checks cover the Open-Meteo request and payload validation, owner and origin restrictions, coordinate rounding, cache reuse, stale and unavailable forecasts, discarded results when the location changes during a request, and migration rebuild and drift.
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-live-weather'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/unit/test_open_meteo.py tests/integration/test_farm_api.py tests/integration/test_farms.py tests/integration/test_identity.py -k 'forecast or provider or weather or task or upgrade_preserves or migration_fresh_rebuild or rate_limit_expiry_and_auth_endpoint_caps'
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+```
+
+With the isolated Edge settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (fetches a farm forecast|reviews a matching task|manages manual tasks)'` passed all six desktop and mobile journeys. The deterministic browser provider exercised the coordinate prompt, owner refresh, source attribution, saved forecast after reload and matching pending task while preserving manual editing. A separate live, keyless Open-Meteo request for public Anuradhapura city coordinates validated all three daily rows. No private coordinates were used in that check. Ruff, Prettier, frontend lint and build passed. The local database was upgraded to `0018_live_farm_weather`, the API reported ready and `alembic check` reported no drift. The paid endpoint and remote CI were outside this verification.
+
+**Published chilli research.** From the repository root:
+
+```powershell
+$chilliCache = Join-Path (Get-Location) '.tools/pytest-cache-chilli-research'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$chilliCache" tests/integration/test_chilli_research.py tests/integration/test_knowledge_evaluation.py tests/integration/test_knowledge_answers.py tests/integration/test_knowledge_demo.py tests/unit/test_gemini.py
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+```
+
+The 23 backend and 79 frontend tests passed. They check farmer and origin restrictions, the source and page for each research entry, abstention, canonical provider inputs, output mismatch and outage fallback, and the unchanged guidance release gate. With the isolated Edge settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts --grep 'farmer (reads a published|sees the pending|searches reviewed excerpts)'` passed six browser journeys. The new desktop and mobile journey used the reference path and checked the Tirappane study citation and an unsupported fertilizer question. Ruff, Prettier, frontend lint and the production build passed.
+
+With network access, a separate real Gemini call selected the exact curated Tirappane summary and citation. The request used the canonical study question and public summaries only. Compare the four summaries with the PDF pages in [KNOWLEDGE_EVALUATION.md](KNOWLEDGE_EVALUATION.md#published-chilli-research). This check covers research facts and one live selection. Farm-specific guidance evaluation and remote CI remain pending.
+
+**Demo weather.** Nine selected PostgreSQL checks passed, including farm-local date calculation around midnight, repeatable fixture reads, unchanged task history, and access for owners only. The 79 frontend tests passed, including continued task editing when demo weather is unavailable. Run from the repository root:
+
+```powershell
+$weatherCache = Join-Path (Get-Location) '.tools/pytest-cache-demo-weather'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$weatherCache" tests/integration/test_farm_api.py -k 'demo_weather or task'
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+```
+
+With the isolated Edge settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (reviews a matching task|reviews suggested plans|manages manual tasks)'` passed all six desktop and mobile journeys. The weather journey checks the simulated label and farm location, date matching, keeping the date without adding a history event, and saving and reloading a moved task. Ruff, Prettier, frontend lint and build passed. The local API reported ready on the existing `0017_suggested_task_plans` schema. No live weather or remote CI was exercised.
+
+**Suggested task plan demo.** The 11 selected PostgreSQL tests passed. They cover manual tasks, exact review binding, concurrent acceptance returning one task, rejection, owner and archive checks, expired and stale context, ineligible sample evidence, duplicate pending tasks, failed decision rollback, and migration rebuild and drift checks. Run from the repository root:
+
+```powershell
+$planCache = Join-Path (Get-Location) '.tools/pytest-cache-suggested-plans'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$planCache" tests/integration/test_farm_api.py tests/integration/test_farms.py tests/integration/test_identity.py -k 'task or upgrade_preserves or migration_fresh_rebuild or rate_limit_expiry_and_auth_endpoint_caps'
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+```
+
+All 78 frontend tests, frontend lint and build, Prettier and Ruff passed. With the isolated Edge settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (reviews suggested plans|manages manual tasks)'` passed both journeys on desktop and mobile. The plan journey confirms the original task remains visible, rejection adds nothing, acceptance creates the displayed task exactly once after reload, and both decisions appear in cultivation history. The local API reported ready on `0017_suggested_task_plans` and `alembic check` reported no drift. Remote CI and a full backend rerun were outside this check.
+
+**Manual cultivation tasks.** PostgreSQL API checks cover sorting and pagination, input validation, editing and terminal transitions, stale versions, private ownership, archive and workspace deletion, and rollback when task history cannot be written. The full backend run passed 287 tests and found one stale schema assertion from the knowledge changes. The migration rebuild and adjacent rate limit test both passed after the assertion was updated. The development database was upgraded to `0016_manual_farm_tasks`, `alembic check` reported no pending changes and the running API reported ready.
+
+From the repository root, run the focused backend check with `.\scripts\uv.ps1 run pytest --require-database tests/integration/test_farm_api.py -k task`. With the isolated Edge browser settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'manages manual tasks'` passed on desktop and mobile. The browser journey creates a task, reloads, edits the date, completes and cancels tasks, filters closed tasks and reads cultivation history. `npm.cmd --prefix frontend run test -- --maxWorkers=2` passed all 78 frontend tests, and the 30 Farm Records component tests passed again after the task reload adjustment. Ruff, frontend lint, Prettier and the production build passed. Remote CI was not run.
+
+The pinned nursery reference passed the focused `test_local_search_serves_only_current_approved_passages` PostgreSQL test. It returned the draft quote in development, denied the wrong page and checksum, and stopped using the reference when the source left draft. A read of the development database verified the real page 26 reference and its translation. Frontend typecheck and lint passed.
+
+The reviewed localhost search passed 16 focused PostgreSQL knowledge tests. Run `./scripts/uv.ps1 run pytest --require-database tests/integration/test_knowledge_evaluation.py tests/integration/test_knowledge_answers.py tests/integration/test_knowledge_demo.py`. A synthetic Sinhala page 26 exercised an exact original quote and approved English translation. The API withheld draft and unreviewed evidence, rejected non-farmer and production requests, and stopped serving an answer and page after revocation or withdrawal. With the isolated browser settings in [DEVELOPMENT.md](DEVELOPMENT.md), `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts --grep 'searches reviewed excerpts locally'` reported passes in desktop and mobile Edge. The browser used a synthetic PDF and checked nursery, irrigation, fertilizer and no evidence. Frontend build and lint passed. The real page 26 is still part of a draft and has no approved review.
+
+The typed question update passed 15 focused PostgreSQL knowledge tests and the desktop and mobile Edge demo journeys. Run the farmer demo commands below. The checks cover example buttons, alternate wording and spelling, all three cited pages, and no evidence for unsupported advice, unrelated requests and mixed topics. The feature stays in the localhost demo and the API rejects it for production or non-farmer accounts. Frontend build and lint passed.
+
+The local farmer demo passed 15 focused knowledge integration tests and two Edge browser journeys against the disposable PostgreSQL database. The API checks matched each answer and citation to text actually extracted from the fictional PDF, rejected incorrect pages and versions, and verified access and production denial. From the repo root, run `./scripts/uv.ps1 run pytest --require-database tests/integration/test_knowledge_evaluation.py tests/integration/test_knowledge_answers.py tests/integration/test_knowledge_demo.py`. With the isolated browser settings in [DEVELOPMENT.md](DEVELOPMENT.md), run `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts --grep 'can try the local demo'`. The desktop and mobile checks opened the demo as a test farmer, read the nursery, irrigation and fertilizer citations, checked the forecast no-evidence state, and returned to the pending real pilot. Frontend build and lint passed.
+
+The localhost draft answer preview passed the five focused PostgreSQL tests in `./scripts/uv.ps1 run pytest --require-database tests/integration/test_knowledge_evaluation.py tests/integration/test_knowledge_answers.py`. It checks administrator access, origin restrictions, exact Sinhala quote matching, translation input and zero saved decisions or scores. The provider double fails the test if the preview calls Gemini. A mobile Edge check against the regular localhost app opened draft `3bb29be7`, rejected a quote absent from page 26, showed its draft English translation and exact Sinhala quote, and opened the cited page. Frontend build and lint passed.
+
+The separate opt-in live Gemini browser test passed in desktop Edge on the isolated test database with network access. It used the built-in fictional PDF, verified the returned quote and page 1 citation, and withdrew the fixture. The first attempt could not reach Google from the sandbox.
+
+Page 26 evidence review and translated answers passed 14 focused PostgreSQL integration tests. Run `./scripts/uv.ps1 run pytest --require-database tests/integration/test_knowledge_evaluation.py tests/integration/test_knowledge_demo.py tests/integration/test_knowledge_answers.py`. The synthetic nursery case verifies the saved English translation, rejection of the wrong provider quote, the original Sinhala citation, release checks and withdrawal. An Edge check at mobile width with fixture responses exercised the admin form and farmer citation display. Frontend build and lint passed. The local app reports ready on `0015_knowledge_translations`. The real nursery excerpt was checked against the PDF and stored text, and its source is still a draft. No real excerpt or translation was sent to Gemini.
+
+The PDF reading order update passed 14 focused unit and PostgreSQL integration tests. From the repo root, run `./scripts/uv.ps1 run pytest --require-database tests/unit/test_pdf_reading_order.py tests/integration/test_knowledge_demo.py tests/integration/test_knowledge_evaluation.py`. The synthetic fixtures cover side-by-side prose with a header and footer and a table with short cells. The worker reprocessed the Sinhala DOA guide as a new draft. Visual comparison confirmed left-to-right column order on PDF pages 8 and 26. All 89 saved pages retained the same words as the preceding draft, and the nursery question still returned page 26. The visual check covered those two pages. Some legacy headings remain garbled.
+
+The Sinhala draft match preview passed 13 focused PostgreSQL knowledge integration tests, including administrator access, source isolation, page 26 matching and exclusion from published evidence. Run `./scripts/uv.ps1 run pytest --require-database tests/integration/test_knowledge_evaluation.py tests/integration/test_knowledge_demo.py tests/integration/test_knowledge_answers.py` from the repository root. Frontend build and lint for the changed screens passed. A local Edge check at 360 px opened the preview from the DOA draft, expanded page 26 and confirmed an empty result for the forecast question. A visual comparison of PDF page 8 found readable Sinhala body text, interleaved columns and a legacy heading. The preview does not establish extraction accuracy for the rest of the guide or measure answer quality.
+
+The scoring and farmer pilot workflow passed 279 local PostgreSQL backend tests, 77 frontend tests and four focused Edge desktop/mobile checks before the PDF size-limit update. A deterministic Gemini double verified a valid citation, rejection of an invented citation, local abstention, release after all ten synthetic checks, cited-page access and automatic closure after withdrawal. Browser checks exercised local scoring and the farmer's pending state. The `0013_knowledge_pdf_limits` migration and DOA guide ingestion have not yet been verified. No real study or farmer content was sent to Gemini.
+
+The chilli evidence screen passed the local PostgreSQL suite (278 tests), frontend suite (77 tests) and two focused desktop/mobile Edge checks. The backend checks label permissions, revision conflicts, shared exclusion of the built-in Gemini PDF, approval only for retrieved pages, withdrawal and append-only decision storage. Browser checks save a missing-evidence label and verify it after reload. Run `.\scripts\uv.ps1 run pytest --require-database`, `npm.cmd --prefix frontend test` and, with the isolated ports below, `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts --grep 'evaluation saves'` from the repository root. The regular app is ready on `0011_knowledge_eval`.
+
+The opt-in live Gemini browser check passed on desktop Edge against the disposable PostgreSQL test database. It signed in as a synthetic administrator, added and processed the built-in PDF, reviewed and published it, verified `DEMO-NURSERY-A` and page 1 on screen, checked **No evidence found** for the forecast question, and withdrew the test version. With the documented isolated test ports and a configured local key, set `E2E_LIVE_GEMINI=1` and run `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts --project desktop --grep 'live Gemini demo'`. Ordinary runs keep the key disabled. The ten agricultural cases remain unscored while their evidence is in review.
+
+Unpublished PDF removal passed eleven focused backend tests and eight desktop/mobile Knowledge Sources journeys. A separate live Gemini adapter check returned the exact fictional nursery sentence and expected citation ID using the configured local key. The signed-in browser journey for a live Gemini answer was not run. The regular app is ready on migration `0010_discard_pdf`.
+
+The Gemini preview passed nine focused backend tests and six desktop/mobile Knowledge Sources journeys. The backend used deterministic provider doubles to verify that only published fictional material is sent and that invalid quotes or citation IDs are rejected. The browser fixtures disable the Gemini key and verify the no-evidence path. Run `.\scripts\uv.ps1 run pytest --require-database tests/integration/test_knowledge_answers.py tests/integration/test_knowledge_demo.py tests/unit/test_gemini.py` and `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts` from the repository root. Live Gemini and the ten agricultural evaluation cases remain pending.
+
+The PDF keyword search preview passed all seven focused PostgreSQL knowledge tests and four focused Edge desktop/mobile journeys. The checks cover page and version citations, no matches, administrator access and exclusion before publication and after withdrawal. Run `.\scripts\uv.ps1 run pytest --require-database tests/integration/test_knowledge_demo.py` and `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts` from the repository root. Frontend build and lint passed. The regular development database was left out of the test runs.
+
 Status: M0 complete and UM1 account, audit-history, in-app notification and homepage session-navigation work verified locally. On 18 November 2026, account/audit changes passed 62 backend tests, 29 frontend tests and all 6 desktop/mobile browser journeys; migration/drift, lint, format and build checks passed. The subsequent homepage/login-navigation follow-up passed 30 frontend tests, lint, format and production build. Its browser rerun could not start because local port 8000 was already occupied; do not treat the earlier browser result as verification of the new redirect. Expanded CI has not run remotely for these local changes. Farming/AI release suites remain future work.
 
-Latest checkpoint, 19 November 2026: Help/support and Admin Overview pass 266 backend tests, 77 frontend tests and 24 desktop/mobile browser journeys on `0007_support`. Earlier records below describe their own historical scope; remote CI remains pending.
+Latest checkpoint, 19 November 2026: the synthetic PDF workflow on `0009_knowledge_pdf` passed 273 backend tests, 77 frontend tests and four focused desktop/mobile browser journeys. Backend tests cover access, origin, size, damaged and textless PDFs, extraction gating and numbered page content. Browser checks upload two fictional PDF pages, run the worker's job handler in a separate test process, then review and publish the extracted version. The earlier Farm Records/support/reporting branch passed its [GitHub CI run](https://github.com/Ushan-Srinuka/WagaMaga/actions/runs/44547501499). The knowledge changes were verified locally.
+
+From the repository root, the backend run used `.\scripts\uv.ps1 run pytest --require-database` with its cache in `.tools/pytest-cache-knowledge-pdf`. The browser command was `npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts`, using Edge and isolated ports 18000/15173 as described below. The built-in guide journey also checks that withdrawal survives reload.
 
 ## Audited administrator count reporting - 19 November 2026
 

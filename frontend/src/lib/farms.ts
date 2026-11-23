@@ -54,6 +54,101 @@ export type Observation = {
   updated_at: string
   effective_archived: boolean
 }
+export type TaskStatus = 'pending' | 'completed' | 'cancelled'
+export type FarmTask = {
+  id: string
+  title: string
+  due_date: string
+  status: TaskStatus
+  version: number
+}
+export type FarmTaskEvent = {
+  task_id: string
+  version: number
+  title: string
+  due_date: string
+  action: 'created' | 'edited' | 'completed' | 'cancelled'
+  occurred_at: string
+}
+export type PlanOutcome = 'accepted' | 'rejected'
+export type TaskPlanDecision = {
+  plan_id: string
+  outcome: PlanOutcome
+  task_id: string | null
+  decided_at: string
+}
+export type TaskPlan = {
+  id: string
+  version: number
+  action_hash: string
+  title: string
+  due_date: string
+  evidence_text: string
+  expires_at: string
+  state: 'pending' | 'expired' | 'stale' | PlanOutcome
+  decision: TaskPlanDecision | null
+}
+export type TaskPlanHistory = TaskPlanDecision & {
+  title: string
+  due_date: string
+  evidence_text: string
+  action_type: 'create_task' | 'reschedule_task'
+  previous_due_date: string | null
+}
+export type DemoForecast = {
+  source: 'fixture'
+  location: string
+  timezone: string
+  forecast_date: string
+  rainfall_mm: number
+  review_due_on: string | null
+}
+export type ForecastDay = {
+  date: string
+  minimum_c: number
+  maximum_c: number
+  precipitation_mm: number
+}
+export type FarmWeather = {
+  status:
+    'needs_coordinates' | 'unfetched' | 'fresh' | 'stale' | 'provider_disabled'
+  location: string
+  timezone: string
+  checked_at: string
+  can_refresh: boolean
+  forecast: {
+    provider: 'open-meteo'
+    fetched_at: string
+    fresh_until: string
+    days: ForecastDay[]
+  } | null
+}
+export type WeatherAlertRule = { threshold_mm: number | null; version: number }
+export type WeatherAlert = {
+  task_id: string
+  title: string
+  due_date: string
+  task_version: number
+  rule_version: number
+  threshold_mm: number
+  precipitation_mm: number
+  forecast_fetched_at: string
+}
+export type WeatherAlertPage = Page<WeatherAlert> & {
+  rule: WeatherAlertRule
+  can_edit: boolean
+  forecast_fresh: boolean
+}
+export type ReschedulePlan = {
+  id: string
+  version: number
+  action_hash: string
+  title: string
+  current_due_date: string
+  proposed_due_date: string
+  evidence_text: string
+  forecast_fetched_at: string
+}
 export type Crop = {
   id: string
   code: string
@@ -80,11 +175,12 @@ export async function farmWrite<T>(
   path: string,
   method: 'POST' | 'PATCH',
   body: unknown,
+  headers?: HeadersInit,
 ): Promise<T> {
   try {
     return await request<T>(
       path,
-      { method, body: JSON.stringify(body) },
+      { method, body: JSON.stringify(body), headers },
       { retryUnauthorized: false },
     )
   } catch (error) {
@@ -106,6 +202,9 @@ export function failureText(error: unknown) {
       return 'The selected crop is no longer supported. Refresh the page to update the crop list.'
     if (error.code === 'FUTURE_OBSERVATION')
       return 'Observation time cannot be in the future. Check the date, time and device timezone.'
+    if (error.code === 'TASK_CLOSED')
+      return 'Completed and cancelled tasks cannot be changed.'
+    if (error.code === 'PLAN_CONFLICT') return error.message
     if (error.status === 404)
       return 'This record is unavailable or does not belong to your account.'
     if (error.status === 403)

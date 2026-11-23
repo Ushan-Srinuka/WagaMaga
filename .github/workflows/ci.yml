@@ -34,6 +34,13 @@ jobs:
         run: uv run alembic upgrade head
       - name: Test rules, API and real PostgreSQL permissions
         run: uv run pytest --require-database
+      - name: Seed synthetic task and forecast records for restore verification
+        run: >-
+          uv run pytest --require-database
+          tests/integration/test_farm_api.py::test_weather_reschedule_uses_exact_plan_and_commits_once
+      - name: Verify a synthetic PostgreSQL backup and restore
+        working-directory: .
+        run: docker compose exec -T db sh -s < scripts/database/verify_test_restore.sh
       - name: Check separate worker startup
         run: uv run python -m app.worker --once
       - name: Database failure diagnostics
@@ -89,7 +96,7 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Test account, farm, support and admin journeys
+      - name: Test account, farm, support, admin and chilli journeys
         working-directory: frontend
         run: npm run test:e2e
       - name: Database failure diagnostics

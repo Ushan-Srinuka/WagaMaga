@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../lib/accounts'
 import { failureText, farmRead } from '../../lib/farms'
 
@@ -7,6 +7,7 @@ export function useRecord<T>(
   reader: typeof farmRead = farmRead,
 ) {
   const [revision, setRevision] = useState(0)
+  const reload = useCallback(() => setRevision((n) => n + 1), [])
   const key = `${path}:${revision}`
   const [result, setResult] = useState<{
     key: string
@@ -33,7 +34,7 @@ export function useRecord<T>(
     error: result.key === key ? result.error : undefined,
     loading:
       Boolean(path) && (result.key !== key || (!result.data && !result.error)),
-    reload: () => setRevision((n) => n + 1),
+    reload,
     replace: (data: T) => setResult({ key, data }),
   }
 }

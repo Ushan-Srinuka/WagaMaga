@@ -89,12 +89,22 @@ export default function AccountShell() {
                 <span aria-hidden="true">♧</span> My Farms
               </NavLink>
             )}
+            {user?.role === 'farmer' && (
+              <NavLink to="/knowledge/chilli" onClick={() => setMenu(false)}>
+                Chilli questions
+              </NavLink>
+            )}
             <NavLink to="/account" onClick={() => setMenu(false)}>
               <span aria-hidden="true">◉</span> My account
             </NavLink>
             {user?.role === 'farmer' && (
               <NavLink to="/support" onClick={() => setMenu(false)}>
                 <span aria-hidden="true">?</span> My support requests
+              </NavLink>
+            )}
+            {user?.role === 'administrator' && (
+              <NavLink to="/admin/knowledge" onClick={() => setMenu(false)}>
+                Knowledge Sources
               </NavLink>
             )}
             {user?.role === 'administrator' && (

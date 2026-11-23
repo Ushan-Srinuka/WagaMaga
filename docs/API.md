@@ -1,8 +1,34 @@
 # API guide
 
-Status: M0 health, UM1 identity/accounts/audit/notifications and FR-C owner-scoped Farm Records endpoints are implemented locally; FR-D now connects their screens. Advisory/planning and remote CI remain pending. `GET /health/live` returns 200 for process liveness; `/health/ready` returns 200 only when PostgreSQL, pgvector and `0007_support` are ready, otherwise 503. These operational routes are outside `/api/v1`. OpenAPI/Swagger are available in development/test and disabled by default in production configuration.
+Status: M0 health, UM1 identity/accounts/audit/notifications and FR-C owner-scoped Farm Records endpoints are implemented locally. FR-D connects their screens. `GET /health/live` returns 200 for process liveness. `/health/ready` returns 200 only when PostgreSQL, pgvector and `0015_knowledge_translations` are ready, otherwise 503. These operational routes are outside `/api/v1`. OpenAPI/Swagger are available in development/test and disabled by default in production configuration.
 
 ## Contract ownership
+
+Evidence review accepts `approved_excerpt` on suitable decisions and requires `english_translation` for a Sinhala quote. It checks the normalized original text against the cited page. The original and translation are each limited to 500 characters. Admin `GET /api/v1/admin/knowledge/evaluation/scores/summary` reports readiness and current passes. `POST /api/v1/admin/knowledge/evaluation/scores/{case_id}` records a check. Farmer endpoints under `/api/v1/knowledge/chilli` list the available pilot questions, accept an allowlisted `case_id` at `POST /answer`, and return the permitted extracted page at `GET /{case_id}/sources/{version_id}/pages/{number}`. Translated results return the approved English wording as `answer` and the original quote as `citation.excerpt`. All answer and page reads check the current pilot release and review. There are no free-form outbound prompts or attached farm records.
+
+The admin evaluation screen uses `GET /api/v1/admin/knowledge/evaluation` to list the ten questions and `GET /api/v1/admin/knowledge/evaluation/{case_id}` for the fixed English and Sinhala keywords, current published candidate pages and labels. `POST /api/v1/admin/knowledge/evaluation/{case_id}/decisions` accepts `expected_revision`, `outcome` and an optional `note`. Outcomes `suitable` and `out_of_scope` require the retrieved `version_id` and `page_number` from 1 to 100. `missing` takes neither field and is available when no current retrieved page is marked suitable. Stale edits and pages no longer in the eligible result set return 409. These routes require an active administrator and use no provider.
+
+To remove an unpublished PDF, an active administrator calls `POST /api/v1/admin/knowledge/sources/{version_id}/discard` with its `expected_revision`; the API hides the version and retains its original. To delete a withdrawn PDF, call the same action route with `/delete`. This clears the original and extracted pages, keeps the version title/checksum and append-only lifecycle history, records status `deleted`, and hides the version from the source list. Existing evaluation decisions and approved excerpts remain. Deletion is atomic and only allowed for withdrawn PDFs. Deleted/discarded page and mutation routes return 404.
+
+Synthetic knowledge sources use `GET /api/v1/admin/knowledge/sources?page=1` (20 rows per page), `POST` to the same path with `{"template":"chilli-demo"}`, and `POST /api/v1/admin/knowledge/sources/{version_id}/{action}` with `expected_revision`. Actions include `review`, `publish` and `withdraw`; only unpublished PDFs can be `discard`ed, and only withdrawn PDFs can be `delete`d. A stale revision or invalid transition returns 409. These routes require a live administrator and use browser write protections. Each transition commits its decision alongside the status change.
+
+In development and test, `POST /api/v1/admin/knowledge/sources/pdf` accepts raw `application/pdf` (up to 6 MiB, 100 pages and 120,000 extracted characters) and returns 201 with `processing: "queued"`. The source list shows `queued`, `ready` or `failed` and a safe failure code. Deleted uploads disappear from that list. `GET /api/v1/admin/knowledge/sources/{version_id}/pages` returns numbered plain text pages for successful extraction. Recognized FM-Abhaya, FM-Ababld, FM-Emanee and FM-Samantha legacy-font runs are converted to Unicode before indexing; other font runs are preserved without conversion. This is not general OCR or validated support for every Sinhala PDF. Review and publication return 409 while processing is queued or failed. Originals have no download route. The endpoint rejects production uploads.
+
+An active administrator can use `GET /api/v1/admin/knowledge/sources/search?q=keywords`. It accepts up to 160 characters and returns up to ten ranked published PDF pages with `title`, `version_id`, `checksum`, `number` and a plain text `excerpt`. All parsed terms must occur on the same page. An empty result means no eligible page matched.
+
+`GET /api/v1/admin/knowledge/evaluation/{case_id}/draft-matches?version_id={uuid}` lets an active administrator search one processed draft PDF using the fixed question’s Sinhala keywords. It returns `keywords` and up to ten `pages` in the same page match shape, including PDF pages 21–100 when present. Unknown cases or versions that are unavailable as processed drafts return 404. This preview sends no provider requests and creates no decisions or scores.
+
+In development and test, an active administrator can call `POST /api/v1/admin/knowledge/evaluation/{case_id}/draft-answer` with `version_id`, `page_number`, `excerpt` and `english_translation`. The page must still match the question in a processed draft. The app checks the input quote against that exact page and returns the supplied draft translation as `answer`, with the original quote in `citation.excerpt`. Both text inputs are capped at 500 characters. The preview saves no reviews or scores and uses no provider. The browser origin must be permitted.
+
+Chilli questions uses `GET /api/v1/knowledge/chilli/research` for examples and `POST /api/v1/knowledge/chilli/research/ask` with `{question}` of 1–240 characters. Both require an active farmer. A supported question returns `kind: "research"`, `method: "reference" | "gemini"`, a versioned summary, and its `citation`. Study citations return `title`, `url`, `publisher`, `authors`, `year`, `journal_page`, `pdf_page` and `license_url`. Public crop-page citations return `title`, `url`, `publisher` and `section` with `method: "reference"`. Unmatched questions return `no_evidence`. For study answers, the server optionally sends the canonical question and fixed study summaries to Gemini, verifies the exact selection and falls back to the reference result when unavailable. Typed text, farm data and the three crop-page summaries stay local. The six provider attempts per farmer per hour use a separate rate limit. These routes are available independently of the farm guidance release flag.
+
+The local farmer demo uses `GET /api/v1/knowledge/chilli/demo` to list example questions. `POST /api/v1/knowledge/chilli/demo/ask` accepts a `question` of 1–240 characters. A match returns the exact fictional answer, its citation and the matched `case_id`. Unsupported wording returns `no_evidence`. `POST /api/v1/knowledge/chilli/demo/answer` also supports the original `case_id` request. `GET /api/v1/knowledge/chilli/demo/{case_id}/sources/{version_id}/pages/{number}` only serves the page mapped to that case. These routes require an active farmer in development or test. The demo uses a server-owned sample and sends no provider requests, saves no typed questions and creates no scoring or release records.
+
+The reviewed localhost workflow uses `GET /api/v1/knowledge/chilli/local` for its examples, `POST /api/v1/knowledge/chilli/local/ask` with a `question` of 1–240 characters, and `GET /api/v1/knowledge/chilli/local/{case_id}/sources/{version_id}/pages/{number}` for citations. It matches the supported nursery, irrigation and fertilizer questions to current `suitable` reviews on published, processed sources. Answers use the approved English wording and cite the exact source quote. Sinhala quotes require an English translation. Unmatched or unsupported questions return `no_evidence`. A page is accessible only while its review and publication remain current. Development or test and an active farmer session are required. The workflow sends no provider requests and creates no review, score or release records.
+
+An operator can configure one pinned `LOCAL_NURSERY_REFERENCE` for the nursery question and `LOCAL_CHILLI_REFERENCES` for the irrigation (`CH-04`) and fertilizer (`CH-05`) questions in the ignored root `.env`. Draft references are development-only. If no approved answer is available, the app can return a configured draft translation as `reference_only: true` after matching the version, checksum, page and quote. The citation serves only the pinned quote. The reference becomes unavailable if the source leaves the draft state or the quote fails verification.
+
+The local admin can create the fictional PDF with `POST /api/v1/admin/knowledge/sources` and `{"template":"gemini-preview-pdf"}`. After extraction, review and publication, `POST /api/v1/admin/knowledge/sources/answer` accepts a fixed `question` ID of `nursery`, `records` or `forecast`. It returns `{"status":"no_evidence"}` or an `answered` response with the exact excerpt and its citation. The endpoint uses the ordinary browser write checks. Only published versions of the built-in fixture qualify for outbound calls. Missing credentials or provider failure returns 503. Invalid quotations or citation IDs return 502. Outbound attempts are limited to eight per administrator per fixed hour.
 
 Administrator reporting follow-up (D30): `GET /api/v1/admin/overview` returns a count snapshot, and `GET /api/v1/admin/users/{user_id}/farm-summary` returns counts for a current non-removed farmer. Both require a live administrator and successful minimal report-view audit. They reveal counts only; existing private farm/child/history routes still deny administrators. [ADMIN_REPORTING.md](ADMIN_REPORTING.md) defines populations, role/archive/delete handling and the exact response fields. No migration or farm access privilege is added; schema stays `0007_support`.
 
@@ -65,6 +91,58 @@ Example creation bodies, using the selected supported crop UUID from `GET /crop-
 ```json
 { "observed_at": "2026-11-01T08:00:00+05:30", "notes": "Synthetic observation; no agricultural recommendation" }
 ```
+
+### Manual cultivation tasks
+
+All paths are relative to `/api/v1/farms/{farm_id}/cultivations/{cultivation_id}/tasks`. Only the current farmer owner can read tasks and task history or write changes. The full parent path must match. Archived parents allow reads and block writes. Workspace-deleted farms return the same 404 as missing or foreign records.
+
+| Method and path | Contract |
+| --- | --- |
+| GET collection | Paginated tasks ordered by due date and UUID. `status=pending\|completed\|cancelled\|all` defaults to pending. |
+| POST collection | Create a pending task with `{title, due_date}` and return 201. Title is trimmed and limited to 120 characters. Due date is an ISO calendar date. |
+| PATCH `/{task_id}` | Save both title and due date on a pending task with `{title, due_date, expected_version}`. An unchanged edit is a no-op. |
+| POST `/{task_id}/status` | Complete or cancel a pending task with `{status, expected_version}`. The new status is final. |
+| GET `/history` | Paginated immutable task events for this cultivation, newest first. Each event includes the task ID, version, title, due date, action and timestamp. |
+
+Writes use the Farm Records origin and session checks. Stale versions, archived parents and changes to terminal tasks return 409. A successful mutation and its private history event commit together. On an uncertain create response, reload the list before retrying.
+
+### Suggested task plan demo
+
+All paths are relative to `/api/v1/farms/{farm_id}/cultivations/{cultivation_id}/task-plans`. They use the same owner, archive, workspace deletion and browser write rules as manual tasks.
+
+| Method and path | Contract |
+| --- | --- |
+| GET collection | Read the newest plan as `{plan}`, or `{plan: null}` before the first review. |
+| POST collection | Supply `{}` to save or retrieve a pending example. The server chooses the task and date, saves the sample evidence and context, and returns the plan. |
+| POST `/{plan_id}/decision` | Send `Idempotency-Key` equal to the plan ID and `{expected_version, action_hash, outcome}`. Outcome is `accepted` or `rejected`. The response includes the saved outcome, decision time and task ID when accepted. |
+| GET `/history` | Paginated accepted and rejected decisions with the saved title, due date and evidence. |
+
+Acceptance adds the exact persisted task. The server rechecks the current parent versions, plan expiry, fixture eligibility, action hash, seven day date bound and any matching pending task. A conflicting submission returns 409. The plan ID is also the unique receipt key. A matching retry returns the original decision and task ID. The task, task history and decision commit together. The demo action is a fixed recordkeeping example and carries no agronomic recommendation or advisor requirement.
+
+### Demo weather
+
+`GET /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/demo-weather` returns the built-in `sample-rain-v1` fixture to the current farmer owner. The response includes `source: "fixture"`, `fixture_version`, the farm's saved `location` and `timezone`, `forecast_date`, `condition`, `rainfall_mm` and `review_due_on`. The sample date is tomorrow in the farm timezone. Archived records return a null review date. Foreign, mismatched or workspace-deleted records return 404.
+
+The UI offers task review for pending tasks whose due date matches `review_due_on`. The GET only reads data. Changing a task still uses the existing manual task PATCH contract.
+
+### Live farm forecast
+
+The current farmer owner reads `GET /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/weather`. This reads the cache and never contacts a provider. The response has `status` (`needs_coordinates`, `unfetched`, `fresh`, `stale` or `provider_disabled`), `location`, `timezone`, `checked_at`, `can_refresh` and a nullable `forecast`. A forecast includes the provider, `fetched_at`, `fresh_until` and local dates with daily minimum and maximum in °C and expected precipitation in mm. Precipitation includes any liquid or frozen precipitation in the provider total.
+
+`POST /weather/refresh` under the same cultivation accepts `{}` with the normal browser write checks. It requires active parents and saved coordinates. It reuses a matching forecast fetched less than 30 minutes ago. Otherwise it requests three dates from Open-Meteo, sends only the saved coordinates rounded to two decimals and the farm timezone, and saves the normalized forecast after rechecking access, location and date. Provider failure returns 503 and preserves the last forecast. Archived records can read existing forecasts. Foreign, mismatched or workspace-deleted records return 404.
+
+### Weather alerts and task date review
+
+These owner-only routes are relative to `/api/v1/farms/{farm_id}/cultivations/{cultivation_id}/weather/alerts`.
+
+| Method and path | Contract |
+| --- | --- |
+| GET collection | Paginated current alerts for pending tasks, plus the threshold and its version, edit access and forecast freshness. |
+| PATCH `/rule` | `{threshold_mm, expected_version}` with a whole number from 1 to 1000 mm or null to turn off alerts. Use version 0 for the first save. |
+| POST `/tasks/{task_id}/reschedule` | `{proposed_due_date, expected_version, expected_rule_version, expected_forecast_fetched_at}`. Creates a review showing the saved task date, selected date and forecast evidence. |
+| POST `/reschedules/{plan_id}/decision` | Send `Idempotency-Key` equal to the plan ID and `{expected_version, action_hash, outcome}`. Acceptance changes the date. Rejection records the decision with no task change. |
+
+Refresh, setting changes and relevant task writes update the alert keyed by task and due date. A date review requires a fresh qualifying alert and a different farm-local date within seven days. Acceptance rechecks the latest review, exact action hash, task and parent versions, forecast freshness and threshold. Changed evidence or a superseded review returns 409. The task revision and execution receipt commit together. Identical decision retries return the original receipt. `GET /task-plans/history` includes the original and proposed dates for these decisions.
 
 ## Other route groups and future scope
 

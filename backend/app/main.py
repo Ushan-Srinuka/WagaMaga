@@ -14,6 +14,11 @@ from app.db.database import Database
 from app.modules.farms.routes import router as farms_router
 from app.modules.identity.routes import router as identity_router
 from app.modules.identity.security import COOKIE_NAME, COOKIE_PATH, IdentityError
+from app.modules.knowledge.pdf_text import MAX_BYTES as PDF_MAX_BYTES
+from app.modules.knowledge.routes import PDF_UPLOAD_PATH
+from app.modules.knowledge.routes import evaluation_router as knowledge_evaluation_router
+from app.modules.knowledge.routes import farmer_router as knowledge_farmer_router
+from app.modules.knowledge.routes import router as knowledge_router
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.reporting.routes import router as reporting_router
 from app.modules.support.routes import router as support_router
@@ -45,7 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "Authorization", "X-WagaMaga-Client"],
+        allow_headers=["Content-Type", "Authorization", "X-WagaMaga-Client", "Idempotency-Key"],
     )
     application.state.database = database
     application.state.settings = settings
@@ -69,7 +74,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.state.request_id = str(uuid4())
         if request.url.path.startswith("/api/v1"):
             size = request.headers.get("content-length", "0")
-            if not size.isdigit() or int(size) > 16384:
+            limit = (
+                PDF_MAX_BYTES
+                if request.method == "POST" and request.url.path == PDF_UPLOAD_PATH
+                else 16384
+            )
+            if not size.isascii() or not size.isdecimal() or len(size) > 8 or int(size) > limit:
                 return error_response(
                     request, 413, "REQUEST_TOO_LARGE", "The request is too large."
                 )
@@ -115,6 +125,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(farms_router)
     application.include_router(support_router)
     application.include_router(reporting_router)
+    application.include_router(knowledge_router)
+    application.include_router(knowledge_evaluation_router)
+    application.include_router(knowledge_farmer_router)
 
     @application.get("/health/live", tags=["Health"])
     def liveness() -> dict[str, str]:

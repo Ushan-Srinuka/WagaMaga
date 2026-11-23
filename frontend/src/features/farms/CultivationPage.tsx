@@ -22,6 +22,7 @@ import {
   TextArea,
 } from './RecordUI'
 import { useRecord, useSave } from './record-hooks'
+import TaskPanel from './TaskPanel'
 
 export default function CultivationPage() {
   const { farmId = '', cultivationId = '' } = useParams()
@@ -68,6 +69,9 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
       />
     )
   const cultivation = record.data
+  const isChilli = crops.data?.items.some(
+    (crop) => crop.id === cultivation.crop_type_id && crop.code === 'chilli',
+  )
   function saved(next: Cultivation) {
     record.replace(next)
     setEditing(false)
@@ -97,6 +101,15 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
       >
         {farm.data.name} · Planting date {cultivation.planting_date}
       </Intro>
+      {isChilli && (
+        <section className="panel" aria-label="Chilli growing help">
+          <h2>Need help with chilli growing?</h2>
+          <p>Find answers from published chilli studies.</p>
+          <Link className="record-link primary" to="/knowledge/chilli">
+            Ask a chilli question
+          </Link>
+        </section>
+      )}
       {notice && <Notice success message={notice} />}
       {cultivation.effective_archived && (
         <Archived inherited={!cultivation.archived_at} />
@@ -233,6 +246,15 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
           </form>
         )}
       </section>
+      <TaskPanel
+        path={path + '/tasks'}
+        planPath={path + '/task-plans'}
+        cultivationPath={path}
+        farmPath={`/farms/${farmId}`}
+        timezone={farm.data.timezone}
+        archived={cultivation.effective_archived}
+        review={reload}
+      />
       <Observations
         key={`${id}:${cultivation.version}`}
         farm={farm.data}
@@ -245,7 +267,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
         <ConfirmDialog
           eyebrow="Farm records / Archive"
           title="Archive this cultivation?"
-          description="Its details and observation history will remain readable. New observations and changes will be disabled. Restoration is not available."
+          description="Its details, tasks and history will remain readable. New activity and changes will be disabled. Restoration is not available."
           busy={save.busy}
           confirmDisabled={save.blocked}
           error={save.error}
