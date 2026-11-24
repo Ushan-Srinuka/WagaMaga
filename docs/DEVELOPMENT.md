@@ -1,6 +1,6 @@
 # Development guide
 
-Status: M0, UM1 accounts, Farm Records, manual cultivation tasks, suggested plans, live farm forecasts, automatic weather notices, date reviews, website support and the chilli knowledge workflows are implemented locally. Current schema is `0021_guidance_observations`. TESTING.md records actual outcomes.
+Status: M0, UM1 accounts, Farm Records, weekly planning and assigned advisor review, live farm forecasts, automatic weather notices, date reviews, website support and the chilli knowledge workflows are implemented locally. Current schema is `0023_plan_revision_notices`. TESTING.md records actual outcomes.
 
 Sign in as a farmer and open **Chilli questions** to read cited answers about nursery setup, irrigation, soil testing and two published studies. The public crop-page answers run locally. The existing `GEMINI_API_KEY` enables optional selection from the four published study summaries, with a local fallback. Use the [local walkthrough](KNOWLEDGE_EVALUATION.md#portfolio-demo) to exercise the separate fictional PDF workflow.
 
@@ -11,6 +11,14 @@ For the suggested plan demo, open **Farm tasks → Suggested plans → Review ex
 For live weather, apply `alembic upgrade head` and open a cultivation under a farm with saved coordinates. Choose **Farm tasks → Weather forecast → Fetch forecast**. Keyless local requests use Open-Meteo's non-commercial endpoint. Set `OPEN_METEO_API_KEY` for the dedicated customer endpoint. In a non-commercial production environment, set `OPEN_METEO_NONCOMMERCIAL=true` to enable the keyless endpoint.
 
 Under **Weather alerts**, save a precipitation threshold in millimetres. A matching pending task offers **Review task date**. Choose a different date, open the comparison and select **Confirm new date** or **Keep current date**. The result appears in **Cultivation history → Plan decisions**.
+
+On an overdue pending task, select **I missed this task**. Choose a date from today through seven days from today and optionally enter a reason. Compare both dates and any saved forecast before making the decision. Both outcomes appear in **Cultivation history → Plan decisions**.
+
+On a cultivation, **Farm tasks → Seven-day planner** groups overdue and scheduled work. With saved coordinates, a fresh forecast and a rainfall threshold, open a flagged pending task's **Review suggestion**. Use **Suggest a date** to compare a later forecast day. To try advisor review, use an account with the existing advisor role and its email address. On the farmer side choose **Ask an advisor → Send for review**. In the advisor account open **Assigned plan reviews**, record an outcome and reason, then refresh the suggestion as the farmer to see the decision.
+
+Use **Notifications → Open plan review** to open an assignment or advisor response. If the advisor requests changes, select **Revise suggested date** and send a different date supported by the current forecast. The previous and revised plans appear in **Cultivation history → Weekly suggestion history**. For multiple tasks, select **Review weekly changes → Prepare weekly suggestions**, choose ready changes and accept the selection together.
+
+Run `.\scripts\uv.ps1 run alembic upgrade head` and start the normal worker for task reminders. Open **Cultivation history** for the diary. To try a reminder, add a task due today or tomorrow in the farm timezone and check **Notifications** after the worker runs.
 
 For automatic notices, run the normal worker in its own terminal. With a rainfall threshold saved, open **Farm tasks → Weather forecast → Turn on automatic alerts**. A qualifying task can generate a private inbox notice on the next eligible worker check. Under a chilli cultivation with an Anuradhapura district label, use **Chilli guidance for this cultivation**. Save an observation with the optional soil moisture field to include it with irrigation checks.
 

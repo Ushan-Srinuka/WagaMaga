@@ -19,6 +19,7 @@ from app.modules.farms.models import (
     FarmObservation,
     FarmRevision,
     ObservationRevision,
+    visible_farm,
 )
 from app.modules.identity.security import IdentityError, now
 from app.modules.identity.service import active_actor
@@ -43,10 +44,6 @@ def farm_for(db, actor_id, farm_id, *, lock=False):
     if record is None:
         raise missing()
     return record
-
-
-def visible_farm():
-    return ~select(FarmDeletion.farm_id).where(FarmDeletion.farm_id == Farm.id).exists()
 
 
 def cultivation_for(db, actor_id, cultivation_id, *, farm_id=None, lock=False):

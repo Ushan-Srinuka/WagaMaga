@@ -11,6 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 from app.db.database import Database
+from app.modules.advisory.routes import review_router
+from app.modules.advisory.routes import router as advisor_router
 from app.modules.farms.routes import router as farms_router
 from app.modules.identity.routes import router as identity_router
 from app.modules.identity.security import COOKIE_NAME, COOKIE_PATH, IdentityError
@@ -123,6 +125,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(identity_router)
     application.include_router(notifications_router)
     application.include_router(farms_router)
+    application.include_router(advisor_router)
+    application.include_router(review_router)
     application.include_router(support_router)
     application.include_router(reporting_router)
     application.include_router(knowledge_router)

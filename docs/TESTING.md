@@ -1,5 +1,53 @@
 # Testing strategy
 
+## Cultivation diary and task reminders
+
+From the repository root, run the focused PostgreSQL and browser checks:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-diary-reminders'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'diary or task_reminders or task_plan_acceptance_creates or weekly_'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (revises an advisor suggestion|accepts selected tasks)'
+```
+
+The tests verify owner-only chronological history, exclusion of unexecuted plans, concurrent reminder deduplication, and suppression after task completion or a due date change. The revision browser journey also verifies that the diary shows the saved date change.
+
+## Weekly revisions, notices and selected changes
+
+The weekly integration cases cover retained advisor feedback, fresh clearance of a revised version, private linked notices, duplicate notice suppression, exact batch selection and rollback if any selected binding conflicts. From the repository root:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-weekly-revisions'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'weekly_'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (revises an advisor suggestion|accepts selected tasks|reviews a missed task|sets a weather alert)'
+```
+
+All 330 backend tests passed with `.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache"`, including the five focused cases. The 79 frontend tests, lint, formatting, production build and eight desktop/mobile journeys passed. The new journeys use synthetic accounts and a deterministic forecast. They cover assignment and advisor responses through the in-app links, resubmission of a revised date, the final farmer decision, and saving two selected date changes while a third task keeps its date. Use the isolated Edge ports in [DEVELOPMENT.md](DEVELOPMENT.md). The local app and worker report ready on `0023_plan_revision_notices`.
+
+## Seven-day planner and assigned review
+
+The PostgreSQL tests cover the farm-local week and overdue tasks, scoped task opening, a fresh forecast-based date suggestion, stage-based clearance requirements, private assigned access, revocation, exact hash matching, stale forecast rejection, and idempotent farmer acceptance. Run from the repository root:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-weekly-planner'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'weekly_planner or weekly_suggestion'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (sends a weekly suggestion|reviews a missed task|sets a weather alert)'
+```
+
+All 328 backend tests passed with `.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache"`, including the three focused cases. The 79 frontend tests and six desktop/mobile Edge journeys passed. The new journey uses an assigned synthetic advisor account and a deterministic forecast. It checks the farmer's disabled confirmation before review, the advisor clearance, the fresh farmer decision and the saved history entry. Browser setup uses the isolated Edge ports in [DEVELOPMENT.md](DEVELOPMENT.md). Migration `0022_advisor_plan_cases`, Alembic drift and worker readiness passed locally.
+
+## Missed-task date review
+
+The targeted PostgreSQL checks cover farm-local overdue eligibility, owner-only review and decision, the seven-day window, optional forecast context, changed forecast evidence, superseding reviews, completed-task protection and concurrent confirmation. The existing weather test also verifies rollback through the shared date write path. Run from the repository root:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-missed-tasks'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'missed_task or weather_reschedule or manual_task_lifecycle'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (reviews a missed task|sets a weather alert|manages manual tasks)'
+```
+
+All 325 backend tests passed with `.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache"`, including the six selected checks above. Six Edge desktop/mobile journeys passed. The missed-task journey compares a date without a current forecast, records keeping the original, confirms a second review and checks both decisions in history. The 79 frontend tests, build, lint, formatting and Alembic drift also passed. Browser setup uses the isolated ports in [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Automatic weather and cultivation guidance
 
 With the local PostgreSQL/pgvector container running, check worker leases, opt-out, notice deduplication and private cultivation context from the repository root:

@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -91,6 +92,10 @@ class FarmDeletion(Base):
     deleted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     entity_version: Mapped[int] = mapped_column(Integer)
+
+
+def visible_farm():
+    return ~select(FarmDeletion.farm_id).where(FarmDeletion.farm_id == Farm.id).exists()
 
 
 class Cultivation(RecordColumns, Base):
@@ -210,6 +215,7 @@ class TaskPlan(Base):
             name="task_plans_action",
         ),
         CheckConstraint("farm_version > 0 AND cultivation_version > 0", name="task_plans_context"),
+        UniqueConstraint("revises_plan_id", name="uq_task_plan_revision_parent"),
         CheckConstraint("isfinite(due_date) AND expires_at > created_at", name="task_plans_dates"),
         Index("ix_task_plans_cultivation_created", "cultivation_id", "created_at", "id"),
         Index("ix_task_plans_target_created", "target_task_id", "created_at", "id"),
@@ -236,6 +242,9 @@ class TaskPlan(Base):
     target_task_version: Mapped[int | None] = mapped_column(Integer)
     previous_due_date: Mapped[date | None] = mapped_column(Date)
     weather_evidence: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    revises_plan_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("task_plans.id", name="fk_task_plan_revision_parent", ondelete="RESTRICT")
+    )
 
 
 class TaskPlanDecision(Base):

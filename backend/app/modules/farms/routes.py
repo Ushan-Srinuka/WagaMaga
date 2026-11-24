@@ -5,7 +5,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 
-from app.modules.farms import plans, service, tasks
+from app.modules.advisory import service as advisory
+from app.modules.farms import diary, missed_tasks, plans, service, tasks, weekly, weekly_batch
 from app.modules.farms import schemas as dto
 from app.modules.identity.dependencies import DB, Principal, browser_write, limiter
 from app.modules.identity.service import Limiter
@@ -47,6 +48,10 @@ WEATHER = "/farms/{farm_id}/cultivations/{cultivation_id}/weather"
 ALERTS = WEATHER + "/alerts"
 WEATHER_SCHEDULE = "/farms/{farm_id}/weather-schedule"
 GUIDANCE = "/farms/{farm_id}/cultivations/{cultivation_id}/chilli-guidance"
+WEEK = "/farms/{farm_id}/cultivations/{cultivation_id}/week"
+SUGGESTION = TASKS + "/{task_id}/weekly-suggestion"
+WEEKLY_PLAN = PLANS + "/weekly/{plan_id}"
+BATCH = PLANS + "/weekly-batch"
 PlanKey = Annotated[UUID, Header(alias="Idempotency-Key")]
 
 
@@ -210,9 +215,134 @@ def cultivation_history(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Princi
     )
 
 
-@router.get(TASKS, response_model=dto.Page[dto.TaskOut])
+@router.get(
+    "/farms/{farm_id}/cultivations/{cultivation_id}/diary",
+    response_model=dto.Page[dto.DiaryEntry],
+)
+def cultivation_diary(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return diary.list_entries(db, ids, farm_id, cultivation_id, query)
+
+
+@router.get(TASKS, response_model=dto.TaskPage)
 def list_tasks(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: TaskQuery):
     return tasks.list_tasks(db, ids, farm_id, cultivation_id, query)
+
+
+@router.get(WEEK, response_model=weekly.Week)
+def planner_week(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return weekly.week(db, ids, farm_id, cultivation_id, query)
+
+
+@router.get(SUGGESTION, response_model=weekly.LatestWeeklyPlan)
+def weekly_suggestion(farm_id: UUID, cultivation_id: UUID, task_id: UUID, db: DB, ids: Principal):
+    return weekly.latest(db, ids, farm_id, cultivation_id, task_id)
+
+
+@router.post(SUGGESTION, response_model=weekly.WeeklyPlan, dependencies=write)
+def prepare_weekly_suggestion(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    task_id: UUID,
+    data: dto.VersionCommand,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return weekly.prepare(db, ids, farm_id, cultivation_id, task_id, data, request.state.request_id)
+
+
+@router.post(WEEKLY_PLAN + "/decision", response_model=dto.PlanDecisionOut, dependencies=write)
+def decide_weekly_suggestion(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    key: PlanKey,
+    data: dto.PlanDecision,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return weekly.decide(
+        db, ids, farm_id, cultivation_id, plan_id, key, data, request.state.request_id
+    )
+
+
+@router.post(WEEKLY_PLAN + "/advisor", response_model=weekly.WeeklyPlan, dependencies=write)
+def assign_weekly_suggestion(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    data: advisory.Assignment,
+    request: Request,
+    db: DB,
+    ids: Principal,
+    limits: Annotated[Limiter, Depends(limiter)],
+):
+    limits.check("advisor_assign", str(ids[0]), 12, 3600)
+    return advisory.assign(
+        db, ids, farm_id, cultivation_id, plan_id, data, request.state.request_id
+    )
+
+
+@router.post(WEEKLY_PLAN + "/advisor/revoke", response_model=weekly.WeeklyPlan, dependencies=write)
+def revoke_weekly_suggestion(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    data: advisory.Binding,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return advisory.revoke(
+        db, ids, farm_id, cultivation_id, plan_id, data, request.state.request_id
+    )
+
+
+@router.post(WEEKLY_PLAN + "/revise", response_model=weekly.WeeklyPlan, dependencies=write)
+def revise_weekly_suggestion(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    data: advisory.Revision,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return advisory.revise(
+        db, ids, farm_id, cultivation_id, plan_id, data, request.state.request_id
+    )
+
+
+@router.get(BATCH, response_model=dto.Page[weekly.WeeklyPlan])
+def weekly_batch_plans(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return weekly_batch.list_plans(db, ids, farm_id, cultivation_id, query)
+
+
+@router.get(BATCH + "/history", response_model=dto.Page[weekly.WeeklyPlan])
+def weekly_batch_history(
+    farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging
+):
+    return weekly_batch.list_plans(db, ids, farm_id, cultivation_id, query, history=True)
+
+
+@router.post(BATCH + "/prepare", response_model=weekly_batch.Preparation, dependencies=write)
+def prepare_weekly_batch(
+    farm_id: UUID, cultivation_id: UUID, _data: dto.Input, request: Request, db: DB, ids: Principal
+):
+    return weekly_batch.prepare(db, ids, farm_id, cultivation_id, request.state.request_id)
+
+
+@router.post(BATCH + "/accept", response_model=weekly.WeeklyBatchReceipt, dependencies=write)
+def accept_weekly_batch(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    data: weekly.WeeklyBatch,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return weekly_batch.accept(db, ids, farm_id, cultivation_id, data, request.state.request_id)
 
 
 @router.post(TASKS, response_model=dto.TaskOut, status_code=201, dependencies=write)
@@ -260,6 +390,43 @@ def change_task_status(
 @router.get(TASKS + "/history", response_model=dto.Page[dto.TaskEventOut])
 def task_history(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
     return tasks.task_history(db, ids, farm_id, cultivation_id, query)
+
+
+@router.post(
+    TASKS + "/{task_id}/missed-review", response_model=dto.DateReviewOut, dependencies=write
+)
+def review_missed_task(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    task_id: UUID,
+    data: missed_tasks.MissedTaskInput,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return missed_tasks.prepare(
+        db, ids, farm_id, cultivation_id, task_id, data, request.state.request_id
+    )
+
+
+@router.post(
+    PLANS + "/missed-reviews/{plan_id}/decision",
+    response_model=dto.PlanDecisionOut,
+    dependencies=write,
+)
+def decide_missed_task(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    plan_id: UUID,
+    key: PlanKey,
+    data: dto.PlanDecision,
+    request: Request,
+    db: DB,
+    ids: Principal,
+):
+    return missed_tasks.decide(
+        db, ids, farm_id, cultivation_id, plan_id, key, data, request.state.request_id
+    )
 
 
 @router.get(PLANS, response_model=dto.LatestPlan)

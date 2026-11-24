@@ -9,8 +9,9 @@ import type {
   WeatherAlertPage,
   WeatherAlertRule,
 } from '../../lib/farms'
-import { farmWrite, timestamp } from '../../lib/farms'
+import { farmWrite } from '../../lib/farms'
 import { Pagination } from './RecordUI'
+import TaskDateComparison from './TaskDateComparison'
 import { useRecord, useSave } from './record-hooks'
 
 type Review = {
@@ -24,11 +25,13 @@ export default function WeatherAlerts({
   timezone,
   revision,
   onRescheduled,
+  onRuleChanged,
 }: {
   path: string
   timezone: string
   revision: string
   onRescheduled: () => void
+  onRuleChanged: () => void
 }) {
   const [page, setPage] = useState(1)
   const record = useRecord<WeatherAlertPage>(`${path}?page=${page}`)
@@ -71,7 +74,7 @@ export default function WeatherAlerts({
             ? 'Weather alerts turned off.'
             : 'Weather alert threshold saved.',
         )
-        reload()
+        onRuleChanged()
       },
     )
   }
@@ -234,40 +237,12 @@ export default function WeatherAlerts({
         <section className="panel" aria-label="Review task date change">
           <h4 className="record-note">{review.alert.title}</h4>
           {prepared ? (
-            <>
-              <dl className="record-form-grid">
-                <div>
-                  <dt>Current date</dt>
-                  <dd>{prepared.current_due_date}</dd>
-                </div>
-                <div>
-                  <dt>Proposed date</dt>
-                  <dd>{prepared.proposed_due_date}</dd>
-                </div>
-              </dl>
-              <p>{prepared.evidence_text}</p>
-              <p className="muted">
-                Forecast fetched{' '}
-                {timestamp(prepared.forecast_fetched_at, timezone)}
-              </p>
-              <div className="record-toolbar">
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!canChange}
-                  onClick={() => decide(prepared, 'accepted')}
-                >
-                  Confirm new date
-                </button>
-                <button
-                  type="button"
-                  disabled={!canChange}
-                  onClick={() => decide(prepared, 'rejected')}
-                >
-                  Keep current date
-                </button>
-              </div>
-            </>
+            <TaskDateComparison
+              plan={prepared}
+              timezone={timezone}
+              disabled={!canChange}
+              decide={(outcome) => decide(prepared, outcome)}
+            />
           ) : (
             <form onSubmit={prepare}>
               <p>Current date · {review.alert.due_date}</p>

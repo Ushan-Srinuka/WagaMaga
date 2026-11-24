@@ -94,35 +94,23 @@ Some safety and persistence capabilities begin in V0 and expand here. Stable job
 
 Exit criteria: AT01-AT12 evidence; at least 30 labelled evaluation questions; Recall@5 >= 0.80 on answerable cases; target >= 90% supported material claims; no unsupported actionable treatment recommendation. Verify latency, timeout, security, usability and recovery requirements in a declared environment. Simulated advisor accounts are labelled.
 
-## Planned planner follow-ups
+## Planner follow-ups
 
-Accepted for future planning on 18 November 2026, not implemented or authorized as the current coding task. The [UI direction](UI_DESIGN.md#planned-farmer-experience-planner-supported-by-chat) makes the planner the farmer's main workspace and chat its explanation/proposal assistant. Existing seven-day bounds, evidence requirements, advisor review, farmer acceptance and execution safeguards remain in scope under FR21-FR30; they are not new features to defer.
+The cultivation planner shows seven farm-local days and overdue pending work. The first weekly suggestion under FR21–FR29 compares one pending task date with a later date based on the owner's rainfall threshold and current forecast. An unconfirmed stage or referral requires assigned advisor clearance. Clearance and farmer acceptance are recorded separately against the same immutable suggestion. The broader [planner direction](UI_DESIGN.md#planned-farmer-experience-planner-supported-by-chat) still includes chat-assisted planning and broader evidence.
+
+Returned suggestions can now be revised and reassigned to the same advisor with fresh clearance and farmer acceptance. In-app notices link to the specific suggestion, and cultivation history shows both versions. The combined weekly review accepts a chosen set of ready date changes atomically while preserving each plan's individual evidence and receipt.
 
 Manual cultivation tasks are implemented locally under FR10 and FR30. The suggested plan demo covers one fixed recordkeeping addition under FR21–FR24 and FR26–FR29. FR32 includes labelled sample rain and live Open-Meteo forecasts. The weather review slice includes owner-set precipitation thresholds, opt-in forecast checks, private inbox notices, persistent alerts in cultivation, and a confirmed date change with an immutable action, weather evidence and atomic task history. Agronomic thresholds and advisor clearance remain future work.
 
 ### Combined cultivation diary
 
-Status: a fuller combined diary remains planned. The cultivation history now includes a separate manual task history section. Present the existing records together as later task and proposal flows are completed.
+Cultivation history now opens with an owner-only, paginated diary of observations, task completion and cancellation, and executed plan changes. Observation entries link to their version history. Task and plan evidence remains available below the diary. Pending and declined proposals do not appear as executed activities.
 
-Completion conditions for the later slice:
-
-- An owner can view dated observations, task completion/cancellation and executed proposal changes for one cultivation in a combined history, with links to permitted details.
-- Pending proposals remain visibly distinct from executed activities; farmer reports and estimates retain their provenance, and historical revisions remain intact.
-- Another owner's history is denied. Administrator status alone grants no private diary access; any later advisor view requires submitted, assigned case scope.
-- Verify record consistency, empty/error states and mobile/keyboard use with synthetic data. Define bounded history loading and reuse existing records before agreeing any API/schema additions.
+The worker now adds private reminders for pending tasks due today or tomorrow and for overdue tasks, based on the farm timezone. Closing or rescheduling a task suppresses any outdated reminder in the inbox.
 
 ### Missed-task proposal revision
 
-Status: planned planner follow-up after manual task states and safe, versioned proposal revision/execution work. "I missed this task" starts a review request; it is not automatic rescheduling, a new task status or evidence that an activity was completed.
-
-Completion conditions for the later slice:
-
-- The owner can identify a pending task and optionally explain the delay. Load current authorized context and ask for missing information instead of assuming a later date is suitable.
-- When supported, show a revised proposal with current/proposed differences, reasons, evidence and the existing maximum seven-day planning horizon. Missing evidence produces clarification or referral, not invented guidance.
-- Leave tasks unchanged until required advisor clearance, fresh farmer acceptance bound to the revised version/hash and backend execution checks succeed. Completed/cancelled tasks and history cannot be silently overwritten.
-- Verify ownership, stale task/proposal conflicts, fresh decision bindings, duplicate/concurrent requests and rollback. Define any new request contract in a separately scoped implementation task; reuse the existing revision lifecycle.
-
-Schedule these as bounded follow-ups after dependency verification, without assigning them to a new major release or claiming completion of V0/V1. Specific controls, APIs and any data changes need design review with their future slice. They do not add sensors, image diagnosis, a marketplace or automatic agronomic decisions.
+The owner can start **I missed this task** on an overdue pending task, choose a date within seven days and optionally explain the delay. The review compares dates and shows saved forecast evidence if it covers the proposed date. The exact decision is recorded in cultivation history. An accepted review updates one task date and adds its task revision atomically. The farmer chooses the date for this manual workflow. Agronomic recommendations and advisor clearance for referred proposals remain a later workflow.
 
 ## M3: V2 reliability
 

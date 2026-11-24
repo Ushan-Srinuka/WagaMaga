@@ -30,6 +30,10 @@ As the relevant features are implemented, provide direct controls for recording 
 
 A combined cultivation diary and an "I missed this task" revision entry point are [planned follow-ups in ROADMAP.md](ROADMAP.md#planned-planner-follow-ups). Their screen details and completion conditions are deferred until their dependencies work. Do not add those controls to the current Farm Records slice or expose nonfunctional farming actions on the homepage.
 
+### Cultivation diary and reminders
+
+Open **Cultivation history** to see the diary first, with farm-local timestamps and links to observation history. Detailed task, plan and record histories stay on the same page. **Notifications** shows due-soon and overdue task reminders for the farmer. Completed, cancelled and moved tasks stop showing outdated reminders.
+
 ### Manual tasks
 
 Open a cultivation and use **Farm tasks** to add a title and due date, edit pending work, mark it complete or cancel it. The list defaults to pending tasks and can show completed, cancelled or all tasks. **Cultivation history** shows task changes with their saved title, due date and time. Archived cultivations keep the list and history readable.
@@ -175,6 +179,12 @@ The signed-in **Chilli questions** screen starts with nursery site, irrigation a
 **Chilli guidance for this cultivation** appears on active chilli cultivation records. It offers three questions and shows the confirmed crop stage, a recent recorded irrigation observation when applicable, the cited source and the checks the record cannot answer. The observation editor includes optional soil moisture and keeps it in private history.
 
 **Automatic weather alerts** sits in the cultivation forecast panel and applies to the whole farm. The control explains the sharing of approximate coordinates before opt-in. The owner can turn it off from the same panel. The notification inbox links to My Farms so the owner can open the cultivation and review any date change.
+
+An overdue pending task in **Farm tasks** shows **I missed this task**. The owner selects a date and can record why the task was missed. The comparison shows the existing date, proposed date and any matching current forecast. **Confirm new date** and **Keep current date** both appear in **Cultivation history → Plan decisions**.
+
+**Seven-day planner** shows the farm's calendar and a separate overdue list. A task opens in the same cultivation's task controls. **Review suggestion** compares the current and proposed dates with rainfall evidence and the recorded stage. The sharing form explains which fields the named advisor receives. **Assigned plan reviews** is visible to advisor accounts and offers clearance, decline or a request for changes with a reason. The farmer sees the advisor decision before confirming the task change.
+
+After **Request changes**, the farmer sees the advisor's reason and can use **Revise suggested date** to send another date back. Each version is visible in **Weekly suggestion history**. Review notifications open the specific suggestion for the recipient. **Review weekly changes** compares several proposed date changes and lets the farmer select ready changes. The result lists the dates saved in that transaction.
 
 Administrators can open **Knowledge Sources** in the workspace menu. Each synthetic guide card displays the saved status, version identifier, content and checksum. Review, publish and withdraw actions require confirmation.
 

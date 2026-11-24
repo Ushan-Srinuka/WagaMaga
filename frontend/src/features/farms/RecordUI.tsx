@@ -104,12 +104,14 @@ export function TextArea({
   change,
   maxLength,
   required = false,
+  disabled,
 }: {
   label: string
   value: string
   change: (v: string) => void
   maxLength: number
   required?: boolean
+  disabled?: boolean
 }) {
   const id = useId()
   return (
@@ -121,6 +123,7 @@ export function TextArea({
         onChange={(e) => change(e.target.value)}
         maxLength={maxLength}
         required={required}
+        disabled={disabled}
         rows={4}
       />
     </div>

@@ -23,6 +23,8 @@ import KnowledgeSourcesPage from './features/knowledge/KnowledgeSourcesPage'
 import KnowledgeEvaluationPage from './features/knowledge/KnowledgeEvaluationPage'
 import KnowledgeScoringPage from './features/knowledge/KnowledgeScoringPage'
 import ChilliQuestionsPage from './features/knowledge/ChilliQuestionsPage'
+import AdvisorCasesPage from './features/farms/AdvisorCasesPage'
+import PlanReviewPage from './features/farms/PlanReviewPage'
 import {
   NewSupportPage,
   SupportDetailPage,
@@ -35,9 +37,11 @@ import './features/farms/farms.css'
 function Protected({
   admin = false,
   farmer = false,
+  advisor = false,
 }: {
   admin?: boolean
   farmer?: boolean
+  advisor?: boolean
 }) {
   const { user, phase, restore } = useSession()
   if (phase === 'loading')
@@ -77,6 +81,13 @@ function Protected({
         <p>Farmer access is required for private farm records.</p>
       </section>
     )
+  if (advisor && user.role !== 'advisor')
+    return (
+      <section className="panel">
+        <h1>Access denied</h1>
+        <p>Advisor access is required for assigned plan reviews.</p>
+      </section>
+    )
   return <Outlet />
 }
 
@@ -89,6 +100,10 @@ function ProductRoutes() {
         <Route element={<AccountShell />}>
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/plan-reviews/:planId" element={<PlanReviewPage />} />
+          <Route element={<Protected advisor />}>
+            <Route path="/advisor/cases" element={<AdvisorCasesPage />} />
+          </Route>
           <Route element={<Protected farmer />}>
             <Route path="/knowledge/chilli" element={<ChilliQuestionsPage />} />
             <Route

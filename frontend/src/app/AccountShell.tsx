@@ -27,7 +27,7 @@ export default function AccountShell() {
     loadUnread()
     window.addEventListener('notifications-updated', loadUnread)
     const timer =
-      user.role === 'farmer'
+      user.role === 'farmer' || user.role === 'advisor'
         ? window.setInterval(() => {
             if (document.visibilityState === 'visible') loadUnread()
           }, 60_000)
@@ -104,6 +104,11 @@ export default function AccountShell() {
             <NavLink to="/account" onClick={() => setMenu(false)}>
               <span aria-hidden="true">◉</span> My account
             </NavLink>
+            {user?.role === 'advisor' && (
+              <NavLink to="/advisor/cases" onClick={() => setMenu(false)}>
+                Assigned plan reviews
+              </NavLink>
+            )}
             {user?.role === 'farmer' && (
               <NavLink to="/support" onClick={() => setMenu(false)}>
                 <span aria-hidden="true">?</span> My support requests

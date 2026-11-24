@@ -3,9 +3,11 @@ import { useSession } from '../../app/session-context'
 import type { Crop, Cultivation, Farm, Page, Revision } from '../../lib/farms'
 import { area, cropName, timestamp } from '../../lib/farms'
 import { Archived, Intro, Pagination, ReadState } from './RecordUI'
+import { CultivationDiary } from './CultivationDiary'
 import { useRecord } from './record-hooks'
 import { TaskHistory } from './TaskPanel'
 import { PlanHistory } from './SuggestedPlans'
+import { WeeklyReviewHistory } from './WeeklyBatch'
 
 export default function HistoryPage() {
   const { farmId = '', cultivationId, observationId } = useParams()
@@ -93,7 +95,11 @@ function History({
           inherited={Boolean(farm.data.effective_archived && cultivationId)}
         />
       )}
+      {cultivationId && !observationId && (
+        <CultivationDiary path={cultivationPath} timezone={timezone} />
+      )}
       <section aria-label={`${kind} revisions`} className="record-history">
+        {kind === 'Cultivation' && <h2>Record versions</h2>}
         {history.data.items.length === 0 ? (
           <section className="panel empty-state">
             <h2>No history to show.</h2>
@@ -200,6 +206,10 @@ function History({
           <TaskHistory path={cultivationPath + '/tasks'} timezone={timezone} />
           <PlanHistory
             path={cultivationPath + '/task-plans'}
+            timezone={timezone}
+          />
+          <WeeklyReviewHistory
+            path={cultivationPath + '/task-plans/weekly-batch'}
             timezone={timezone}
           />
         </>

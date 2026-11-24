@@ -84,6 +84,14 @@ Migration `0020_scheduled_weather` adds one `weather_refresh_schedules` row per 
 
 Migration `0021_guidance_observations` adds nullable soil moisture to `farm_observations`. Observation history allows this field only with the same three enumerated values. Revisions without a soil moisture value retain the original snapshot shape and historical rows stay readable. Downgrade refuses to discard recorded values or their history.
 
+Missed-task reviews reuse the existing `task_plans`, `task_plan_decisions` and `farm_task_events` tables. The review stores its policy, date pair, optional farmer reason and forecast evidence with the bound action hash. The `weather_evidence` object has a nullable `forecast` member for this policy. No migration is needed.
+
+Migration `0022_advisor_plan_cases` adds `advisor_cases` and `advisor_decisions`. One case records the explicitly assigned advisor and revocation for an immutable weekly plan. The decision references both the assignment and the exact plan ID, version and action hash. The app can update only the case's revocation fields and can only append a decision. Weekly date execution uses the existing bound farmer decision and task history transaction.
+
+Migration `0023_plan_revision_notices` gives weekly plan revisions an optional unique parent reference. The parent is included in the revised action hash. A revision, its new assignment and its recipient notice commit together. `notifications.review_plan_id` links only `advisor_review` events to an immutable plan. Batch acceptance reuses existing task events and per-plan receipts in one transaction.
+
+Migration `0024_task_reminders` links reminder notifications to an existing task and due date. A unique constraint on task, due date and event type prevents duplicate delivery. Closed and superseded reminders retain their stored rows and are filtered out of the inbox. The cultivation diary projects existing records and adds no table.
+
 Weather date proposals reuse the append-only `task_plans` and `task_plan_decisions` tables. A date proposal stores the task ID/version, original and proposed dates, the applied threshold and a normalized snapshot of the forecast evidence. Each accepted decision points to a unique task event and version through a composite foreign key. Existing accepted example plans are backfilled to their original task creation event. Downgrade refuses while a weather date proposal exists.
 
 - UUID primary keys, explicit foreign keys and UTC event timestamps.

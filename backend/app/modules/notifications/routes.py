@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
+from app.modules.farms.reminders import visible_notification
 from app.modules.identity.dependencies import DB, Principal
 from app.modules.identity.service import active_actor
 from app.modules.notifications import service
@@ -24,7 +25,7 @@ def list_notifications(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     actor = active_actor(db, ids)
-    filters = [Notification.recipient_id == actor.id]
+    filters = [Notification.recipient_id == actor.id, visible_notification()]
     if unread_only:
         filters.append(Notification.read_at.is_(None))
     total = db.scalar(select(func.count()).select_from(Notification).where(*filters)) or 0

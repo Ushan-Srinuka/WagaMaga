@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.modules.farms.reminders import visible_notification
 from app.modules.identity.security import IdentityError, now
 from app.modules.notifications.models import Notification
 from app.modules.notifications.schemas import NotificationChange
@@ -16,6 +17,8 @@ def create_notification(
     event_type: str,
     title: str,
     body: str,
+    *,
+    review_plan_id: UUID | None = None,
 ) -> None:
     """Add a trusted, templated account event to the current transaction."""
     db.add(
@@ -24,6 +27,7 @@ def create_notification(
             event_type=event_type,
             title=title,
             body=body,
+            review_plan_id=review_plan_id,
         )
     )
 
@@ -33,7 +37,11 @@ def unread_count(db: Session, recipient_id: UUID) -> int:
         db.scalar(
             select(func.count())
             .select_from(Notification)
-            .where(Notification.recipient_id == recipient_id, Notification.read_at.is_(None))
+            .where(
+                Notification.recipient_id == recipient_id,
+                Notification.read_at.is_(None),
+                visible_notification(),
+            )
         )
         or 0
     )
@@ -50,6 +58,7 @@ def update_read_state(
         .where(
             Notification.id == notification_id,
             Notification.recipient_id == recipient_id,
+            visible_notification(),
         )
         .with_for_update()
     )

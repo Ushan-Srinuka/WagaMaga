@@ -17,6 +17,16 @@ from pydantic import (
 )
 
 
+class DiaryEntry(BaseModel):
+    id: UUID
+    kind: Literal["observation", "completed", "cancelled", "create_task", "reschedule_task"]
+    occurred_at: datetime
+    description: str
+    soil_moisture: str | None
+    previous_due_date: date | None
+    due_date: date | None
+
+
 def trimmed(value: str) -> str:
     value = value.strip()
     if not value or "\x00" in value:
@@ -205,6 +215,7 @@ TaskOutcome = Literal["completed", "cancelled"]
 
 class TaskQuery(Paging):
     status: TaskStatus | Literal["all"] = "pending"
+    task_id: UUID | None = None
 
 
 class TaskCreate(Input):
@@ -296,6 +307,19 @@ class TaskEventOut(BaseModel):
 PlanOutcome = Literal["accepted", "rejected"]
 
 
+class DateReviewOut(BaseModel):
+    id: UUID
+    version: int
+    action_hash: str
+    task_id: UUID
+    title: str
+    current_due_date: date
+    proposed_due_date: date
+    evidence_text: str
+    forecast_fetched_at: datetime | None
+    expires_at: datetime
+
+
 class PlanDecision(VersionCommand):
     action_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     outcome: PlanOutcome
@@ -336,6 +360,8 @@ class PlanHistoryOut(PlanDecisionOut):
     evidence_text: str
     action_type: Literal["create_task", "reschedule_task"]
     previous_due_date: date | None
+    advisor_outcome: Literal["cleared", "declined", "changes_requested"] | None = None
+    advisor_reason: str | None = None
 
 
 class CropOut(BaseModel):
@@ -359,3 +385,7 @@ class Page[T](BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TaskPage(Page[TaskOut]):
+    farm_today: date

@@ -3,18 +3,16 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
-from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
-from app.modules.farms import plans, service, tasks
+from app.modules.farms import date_reviews, plans, service, tasks
 from app.modules.farms import schemas as dto
 from app.modules.farms.models import TaskPlan, TaskPlanDecision
 from app.modules.weather import alerts, live
 from app.modules.weather.models import WeatherAlertRule, WeatherTaskAlert
 
-ACTION = "reschedule_task"
+ACTION = date_reviews.ACTION
 EVIDENCE_CODE = "manual_weather_threshold_v1"
 
 
@@ -37,17 +35,8 @@ class Evidence(BaseModel):
     timezone: str
 
 
-class RescheduleOut(BaseModel):
-    id: UUID
-    version: int
-    action_hash: str
-    task_id: UUID
-    title: str
-    current_due_date: date
-    proposed_due_date: date
-    evidence_text: str
+class RescheduleOut(dto.DateReviewOut):
     forecast_fetched_at: datetime
-    expires_at: datetime
 
 
 def current_evidence(db, farm, task, stamp):
@@ -96,12 +85,6 @@ def hash_action(farm, cultivation, task, proposed_date, evidence):
     )
 
 
-def valid_date(db, farm, current_date, proposed_date, stamp):
-    today = service.local_today(db, farm, at=stamp)
-    if current_date == proposed_date or not today <= proposed_date <= today + timedelta(days=7):
-        raise plans.conflict("Choose a different date within the next seven days.")
-
-
 def view(plan, evidence):
     return RescheduleOut(
         id=plan.id,
@@ -117,19 +100,6 @@ def view(plan, evidence):
     )
 
 
-def latest_for_task(db, cultivation_id, task_id):
-    return db.scalar(
-        select(TaskPlan)
-        .where(
-            TaskPlan.cultivation_id == cultivation_id,
-            TaskPlan.target_task_id == task_id,
-            TaskPlan.action_type == ACTION,
-        )
-        .order_by(TaskPlan.created_at.desc(), TaskPlan.id.desc())
-        .limit(1)
-    )
-
-
 def prepare(db, ids, farm_id, cultivation_id, task_id, data, request_id):
     actor, farm, cultivation = tasks.writable_context(db, ids, farm_id, cultivation_id)
     service.active(farm, cultivation)
@@ -142,9 +112,9 @@ def prepare(db, ids, farm_id, cultivation_id, task_id, data, request_id):
         or evidence.fetched_at != data.expected_forecast_fetched_at
     ):
         raise plans.conflict("The weather alert changed. Reload it before reviewing a date.")
-    valid_date(db, farm, task.due_date, data.proposed_due_date, stamp)
+    date_reviews.valid_date(db, farm, task.due_date, data.proposed_due_date, stamp)
     digest = hash_action(farm, cultivation, task, data.proposed_due_date, evidence)
-    latest = latest_for_task(db, cultivation.id, task.id)
+    latest = date_reviews.latest_for_task(db, cultivation.id, task.id)
     if latest is not None:
         if latest.action_hash == digest and db.get(TaskPlanDecision, latest.id) is None:
             return view(latest, evidence)
@@ -180,43 +150,16 @@ def prepare(db, ids, farm_id, cultivation_id, task_id, data, request_id):
 
 def decide(db, ids, farm_id, cultivation_id, plan_id, key, data, request_id):
     actor, farm, cultivation = tasks.writable_context(db, ids, farm_id, cultivation_id)
-    plan = db.scalar(
-        select(TaskPlan).where(
-            TaskPlan.id == plan_id,
-            TaskPlan.cultivation_id == cultivation.id,
-            TaskPlan.action_type == ACTION,
-        )
-    )
-    if plan is None:
-        raise service.missing()
+    plan = date_reviews.plan_for_decision(db, cultivation.id, plan_id, EVIDENCE_CODE)
     saved = plans.replay_decision(db, plan, key, data)
     if saved is not None:
         return saved
-    service.active(farm, cultivation)
     stamp = live.now()
-    if (
-        stamp >= plan.expires_at
-        or plan.farm_version != farm.version
-        or plan.cultivation_version != cultivation.version
-        or plan.evidence_code != EVIDENCE_CODE
-    ):
-        raise plans.conflict("This review expired or the farm changed. Start a new review.")
-    if latest_for_task(db, cultivation.id, plan.target_task_id).id != plan.id:
-        raise plans.conflict("A newer date was reviewed for this task. Use the latest review.")
-    task = tasks.task_for_update(db, cultivation.id, plan.target_task_id)
-    if task.version != plan.target_task_version or task.due_date != plan.previous_due_date:
-        raise plans.conflict("This task changed. Start a new review.")
+    task = date_reviews.current_task(db, farm, cultivation, plan, stamp)
     evidence = current_evidence(db, farm, task, stamp)
     if (
         evidence.model_dump(mode="json") != plan.weather_evidence
         or hash_action(farm, cultivation, task, plan.due_date, evidence) != plan.action_hash
     ):
         raise plans.conflict("The weather or alert setting changed. Start a new review.")
-    valid_date(db, farm, task.due_date, plan.due_date, stamp)
-    effect = None
-    if data.outcome == "accepted":
-        service.assign(task, {"due_date": plan.due_date})
-        tasks.record_event(db, task, actor.id, "edited", request_id)
-        alerts.sync(db, farm, cultivation_id=cultivation.id, task_id=task.id)
-        effect = task
-    return plans.record_decision(db, plan, actor.id, data.outcome, effect, stamp, request_id)
+    return date_reviews.finish(db, actor.id, farm, plan, task, data.outcome, stamp, request_id)

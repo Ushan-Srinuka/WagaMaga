@@ -64,6 +64,15 @@ export type FarmTask = {
   status: TaskStatus
   version: number
 }
+export type TaskPage = Page<FarmTask> & { farm_today: string }
+export type WeekTask = FarmTask & {
+  precipitation_mm: number | null
+  rain_alert: boolean
+}
+export type PlannerWeek = Page<WeekTask> & {
+  starts_on: string
+  ends_on: string
+}
 export type FarmTaskEvent = {
   task_id: string
   version: number
@@ -96,6 +105,8 @@ export type TaskPlanHistory = TaskPlanDecision & {
   evidence_text: string
   action_type: 'create_task' | 'reschedule_task'
   previous_due_date: string | null
+  advisor_outcome?: AdvisorOutcome | null
+  advisor_reason?: string | null
 }
 export type DemoForecast = {
   source: 'fixture'
@@ -149,7 +160,71 @@ export type ReschedulePlan = {
   current_due_date: string
   proposed_due_date: string
   evidence_text: string
-  forecast_fetched_at: string
+  forecast_fetched_at: string | null
+}
+export type WeeklyEvidence = {
+  confirmed_stage: string | null
+  due_rain_mm: number
+  proposed_rain_mm: number
+  threshold_mm: number
+  fresh_until: string
+}
+export type AdvisorOutcome = 'cleared' | 'declined' | 'changes_requested'
+export type WeeklyPlanState =
+  | AdvisorOutcome
+  | 'ready'
+  | 'advisor_required'
+  | 'awaiting_advisor'
+  | 'revoked'
+  | 'stale'
+  | 'accepted'
+  | 'rejected'
+export type WeeklyPlan = ReschedulePlan & {
+  evidence: WeeklyEvidence
+  requires_advisor: boolean
+  advisor_assigned: boolean
+  revises_plan_id: string | null
+  prior_proposed_date: string | null
+  can_revise: boolean
+  advisor_reason: string | null
+  state: WeeklyPlanState
+}
+export type AdvisorReview = {
+  plan_id: string
+  outcome: AdvisorOutcome
+  reason: string
+  decided_at: string
+}
+export type AdvisorCase = ReschedulePlan & {
+  evidence: WeeklyEvidence
+  review: AdvisorReview | null
+  can_review: boolean
+  prior_proposed_date: string | null
+}
+
+export type PlanReviewLink =
+  | {
+      role: 'farmer'
+      farm_id: string
+      cultivation_id: string
+      timezone: string
+      task: WeekTask
+      plan: WeeklyPlan
+    }
+  | { role: 'advisor'; case: AdvisorCase }
+
+export const weeklyPlanStatus: Record<WeeklyPlanState, string> = {
+  ready: 'Ready for your decision.',
+  advisor_required: 'This suggestion needs advisor review.',
+  awaiting_advisor: 'Waiting for your assigned advisor.',
+  cleared:
+    'Your advisor cleared this suggestion. You decide whether to move the task.',
+  declined: 'Your advisor declined this suggestion.',
+  changes_requested: 'Your advisor asked for changes.',
+  revoked: 'Advisor access was revoked.',
+  stale: 'This suggestion is out of date.',
+  accepted: 'Task date updated.',
+  rejected: 'Task date kept.',
 }
 export type Crop = {
   id: string

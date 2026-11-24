@@ -139,6 +139,59 @@ test('farmer manages manual tasks and sees their cultivation history', async ({
   await fit(page)
 })
 
+test('farmer reviews a missed task and decides whether to move it', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic missed-task farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const taskPath = root + cultivation + '/tasks'
+  const listed = await request.get(taskPath, { headers: owner.headers })
+  expect(listed.ok()).toBe(true)
+  const today: string = (await listed.json()).farm_today
+  const yesterday = new Date(`${today}T12:00:00Z`)
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+  const original = yesterday.toISOString().slice(0, 10)
+  const created = await request.post(taskPath, {
+    headers: owner.headers,
+    data: { title: 'Synthetic missed field check', due_date: original },
+  })
+  expect(created.ok()).toBe(true)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const task = page.getByRole('article').filter({
+    has: page.getByRole('heading', {
+      name: 'Synthetic missed field check',
+      exact: true,
+    }),
+  })
+  const missed = task.getByRole('button', { name: 'I missed this task' })
+  const review = task.getByRole('region', { name: 'Review missed task' })
+  await missed.click()
+  await review.getByLabel('Proposed date').fill(today)
+  await review
+    .getByLabel('Why was it missed? (optional)')
+    .fill('Access was delayed.')
+  await review.getByRole('button', { name: 'Review new date' }).click()
+  await expect(review.getByText(original, { exact: true })).toBeVisible()
+  await expect(review.getByText(today, { exact: true })).toBeVisible()
+  await expect(review).toContainText('No current forecast is available')
+  await review.getByRole('button', { name: 'Keep current date' }).click()
+  await expect(task).toContainText(`Due ${original} · Overdue`)
+  await missed.click()
+  await review.getByLabel('Proposed date').fill(today)
+  await review.getByRole('button', { name: 'Review new date' }).click()
+  await review.getByRole('button', { name: 'Confirm new date' }).click()
+  await expect(task).toContainText(`Due ${today}`)
+  await expect(missed).toHaveCount(0)
+  await page.getByRole('link', { name: 'Cultivation history' }).click()
+  const history = page.getByRole('region', { name: 'Plan decisions' })
+  await expect(history).toContainText(`Rejected · ${original} → ${today}`)
+  await expect(history).toContainText(`Accepted · ${original} → ${today}`)
+  await expect(history).toContainText('Access was delayed.')
+  await fit(page)
+})
+
 test('farmer reviews suggested plans and accepts one addition', async ({
   page,
   request,
@@ -400,6 +453,227 @@ test('farmer sets a weather alert and confirms a reviewed task date', async ({
   await expect(
     page.getByRole('region', { name: 'Plan decisions' }),
   ).toContainText(`Accepted · ${due} → ${replacement}`)
+  await fit(page)
+})
+
+async function rainyWeek(
+  request: APIRequestContext,
+  owner: Awaited<ReturnType<typeof actor>>,
+  cultivation: string,
+) {
+  const farmPath = cultivation.split('/cultivations/')[0]
+  const updated = await request.patch(root + farmPath, {
+    headers: owner.headers,
+    data: { latitude: '8.31', longitude: '80.40', expected_version: 1 },
+  })
+  expect(updated.ok()).toBe(true)
+  const rule = await request.patch(
+    root + cultivation + '/weather/alerts/rule',
+    {
+      headers: owner.headers,
+      data: { expected_version: 0, threshold_mm: 5 },
+    },
+  )
+  expect(rule.ok()).toBe(true)
+  const forecast = await request.post(root + cultivation + '/weather/refresh', {
+    headers: owner.headers,
+    data: {},
+  })
+  expect(forecast.ok()).toBe(true)
+  return (await forecast.json()).forecast.days as Array<{ date: string }>
+}
+
+async function openPlanNotice(page: Page, title: string) {
+  await page.goto('/notifications', { waitUntil: 'domcontentloaded' })
+  const item = page
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+  await item.getByRole('link', { name: 'Open plan review' }).click()
+  await expect(page).toHaveURL(/\/plan-reviews\/[a-f0-9-]+$/)
+}
+
+test('farmer revises an advisor suggestion from notices and confirms the cleared date', async ({
+  page,
+  request,
+  browser,
+}) => {
+  const owner = await actor(request, 'Synthetic weekly planner farmer')
+  const advisor = await actor(request, 'Synthetic assigned advisor')
+  const admin = await request.post(root + '/auth/login', {
+    headers,
+    data: { email: adminEmail, password },
+  })
+  expect(admin.ok()).toBe(true)
+  const promoted = await request.patch(
+    root + `/admin/users/${advisor.user.id}/role`,
+    {
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${(await admin.json()).access_token}`,
+      },
+      data: {
+        role: 'advisor',
+        expected_version: advisor.user.version,
+        reason: 'Synthetic advisor case test',
+      },
+    },
+  )
+  expect(promoted.ok()).toBe(true)
+  const cultivation = await taskCultivation(request, owner)
+  const days = await rainyWeek(request, owner, cultivation)
+  const name = 'Synthetic weekly field check'
+  const task = await request.post(root + cultivation + '/tasks', {
+    headers: owner.headers,
+    data: { title: name, due_date: days[0].date },
+  })
+  expect(task.ok()).toBe(true)
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const planner = page.getByRole('region', { name: 'Seven-day planner' })
+  const day = planner.getByRole('region', { name: `Tasks for ${days[0].date}` })
+  await expect(day).toContainText('Rain alert (8.5 mm)')
+  await day.getByRole('button', { name: `Open task ${name}` }).click()
+  await expect(
+    page.getByRole('button', { name: 'Back to task list' }),
+  ).toBeVisible()
+  await day.getByRole('button', { name: 'Review suggestion' }).click()
+  const suggestion = planner.getByRole('region', {
+    name: 'Weekly date suggestion',
+  })
+  await suggestion.getByRole('button', { name: 'Suggest a date' }).click()
+  await expect(
+    suggestion.getByRole('button', { name: 'Confirm new date' }),
+  ).toBeDisabled()
+  await expect(
+    suggestion.getByText(days[1].date, { exact: true }),
+  ).toBeVisible()
+  await suggestion.getByRole('button', { name: 'Ask an advisor' }).click()
+  await suggestion.getByLabel('Advisor account email').fill(advisor.email)
+  await suggestion.getByRole('button', { name: 'Send for review' }).click()
+  await expect(suggestion).toContainText('Waiting for your assigned advisor')
+  const advisorPage = await browser.newPage({
+    baseURL: webOrigin,
+    viewport: page.viewportSize() ?? undefined,
+  })
+  try {
+    await advisorPage.goto('/login')
+    await advisorPage.getByLabel('Email address').fill(advisor.email)
+    await advisorPage.getByLabel('Password', { exact: true }).fill(password)
+    await advisorPage.getByRole('button', { name: 'Sign in' }).click()
+    await expect(advisorPage).toHaveURL('/account')
+    await openPlanNotice(advisorPage, 'Plan review assigned')
+    const assigned = advisorPage.getByRole('article', {
+      name: `Advisor review for ${name}`,
+    })
+    await assigned
+      .getByLabel('Review reason')
+      .fill('Consider the following dry day.')
+    await assigned.getByRole('button', { name: 'Request changes' }).click()
+    await expect(assigned).toContainText('Changes requested')
+
+    await openPlanNotice(page, 'Advisor requested changes')
+    const returned = page.getByRole('region', {
+      name: 'Weekly date suggestion',
+    })
+    await expect(returned).toContainText('Consider the following dry day.')
+    await returned
+      .getByRole('button', { name: 'Revise suggested date' })
+      .click()
+    await returned.getByLabel('Revised date').fill(days[2].date)
+    await returned
+      .getByRole('button', { name: 'Send revised suggestion' })
+      .click()
+    await expect(returned).toContainText(
+      `Previous suggestion · ${days[1].date}`,
+    )
+    await expect(
+      returned.getByRole('button', { name: 'Confirm new date' }),
+    ).toBeDisabled()
+
+    await openPlanNotice(advisorPage, 'Revised plan assigned')
+    await expect(assigned).toContainText(
+      `Previous suggestion · ${days[1].date}`,
+    )
+    await assigned
+      .getByLabel('Review reason')
+      .fill('The revised date works for this synthetic task.')
+    await assigned.getByRole('button', { name: 'Clear suggestion' }).click()
+    await expect(assigned.getByText('Cleared', { exact: true })).toBeVisible()
+  } finally {
+    await advisorPage.close()
+  }
+  await openPlanNotice(page, 'Plan cleared by advisor')
+  const cleared = page.getByRole('region', { name: 'Weekly date suggestion' })
+  await expect(
+    cleared.getByRole('button', { name: 'Confirm new date' }),
+  ).toBeEnabled()
+  await cleared.getByRole('button', { name: 'Confirm new date' }).click()
+  await expect(cleared).toContainText('Task date updated.')
+  await page.getByRole('link', { name: 'Open cultivation' }).click()
+  await expect(page).toHaveURL(cultivation)
+  await expect(
+    planner.getByRole('region', { name: `Tasks for ${days[2].date}` }),
+  ).toContainText(name)
+  await page.getByRole('link', { name: 'Cultivation history' }).click()
+  const diary = page.getByRole('region', { name: 'Cultivation diary' })
+  await expect(diary).toContainText('Task date changed from a plan')
+  await expect(diary).toContainText(name)
+  await expect(diary).toContainText(`${days[0].date} → ${days[2].date}`)
+  await expect(
+    page.getByRole('region', { name: 'Weekly suggestion history' }),
+  ).toContainText('Consider the following dry day.')
+  await expect(
+    page.getByRole('region', { name: 'Plan decisions' }),
+  ).toContainText('The revised date works for this synthetic task.')
+  await fit(page)
+})
+
+test('farmer accepts selected tasks together in a weekly plan', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic weekly batch farmer')
+  const cultivation = await taskCultivation(request, owner)
+  const days = await rainyWeek(request, owner, cultivation)
+  const stage = await request.post(root + cultivation + '/stage-confirmation', {
+    headers: owner.headers,
+    data: { expected_version: 1, stage: 'Seedling' },
+  })
+  expect(stage.ok()).toBe(true)
+  for (const title of [
+    'Synthetic task one',
+    'Synthetic task two',
+    'Synthetic task three',
+  ]) {
+    expect(
+      (
+        await request.post(root + cultivation + '/tasks', {
+          headers: owner.headers,
+          data: { title, due_date: days[0].date },
+        })
+      ).ok(),
+    ).toBe(true)
+  }
+  await login(page, owner.email)
+  await page.goto(cultivation)
+  const planner = page.getByRole('region', { name: 'Seven-day planner' })
+  await planner.getByRole('button', { name: 'Review weekly changes' }).click()
+  const batch = planner.getByRole('region', { name: 'Review weekly changes' })
+  await batch
+    .getByRole('button', { name: 'Prepare weekly suggestions' })
+    .click()
+  await batch.getByLabel('Select change for Synthetic task one').check()
+  await batch.getByLabel('Select change for Synthetic task two').check()
+  await batch
+    .getByRole('button', { name: 'Accept selected changes (2)' })
+    .click()
+  const saved = batch.getByRole('region', { name: 'Saved weekly changes' })
+  await expect(saved).toContainText('Synthetic task one')
+  await expect(saved).toContainText('Synthetic task two')
+  await expect(saved).not.toContainText('Synthetic task three')
+  await expect(
+    planner.getByRole('region', { name: `Tasks for ${days[0].date}` }),
+  ).toContainText('Synthetic task three')
   await fit(page)
 })
 

@@ -307,6 +307,10 @@ Use the existing worker and database for leased forecast checks. Owners opt in p
 
 Use structured farmer-reported soil moisture and confirmed stage for the three contextual chilli questions. Source facts come from the existing attributed public reference set. Use only an explicit Anuradhapura location label and observations from the last 24 hours for irrigation context. Questions use local rules and ask for missing field evidence where a source cannot justify plot-specific advice.
 
+## D40: weekly planning and assigned advisor review
+
+Show overdue pending tasks and the next seven farm-local days in the cultivation. Use the owner's rainfall setting to compare one pending task with the earliest later forecast day below that threshold in the same week. Retain the confirmed stage in the review evidence and require advisor clearance when the stage is missing or the task revision has been referred. Reuse the immutable task-plan action and execution receipt. Sharing is explicit and revocable, with an exact advisor account and a minimal case snapshot. Advisor clearance and farmer acceptance have independent, bound records.
+
 ## Recording an outcome
 
 For each resolved decision, record ID, date, status, context, chosen option, alternatives, consequences and affected documents. Keep superseded outcomes with their replacement link. Never mark a decision resolved just because Codex generated a suggestion.

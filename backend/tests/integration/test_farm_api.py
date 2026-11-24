@@ -12,7 +12,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.integrations import open_meteo
-from app.modules.farms import plans, service
+from app.modules.farms import plans, reminders, service
 from app.modules.farms.models import (
     CHILLI_ID,
     CropType,
@@ -570,6 +570,399 @@ def test_cultivation_guidance_uses_only_current_owned_structured_observations(
     )
 
 
+def missed_decision(client, owner, cultivation, plan, outcome="accepted"):
+    return call(
+        client,
+        "POST",
+        cultivation + f"/task-plans/missed-reviews/{plan['id']}/decision",
+        owner | {"Idempotency-Key": plan["id"]},
+        {
+            "expected_version": plan["version"],
+            "action_hash": plan["action_hash"],
+            "outcome": outcome,
+        },
+    )
+
+
+def test_missed_task_keeps_or_moves_the_exact_reviewed_date(
+    account_client, farm_records, monkeypatch
+):
+    client = account_client
+    owner = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    task_path = cultivation + "/tasks"
+    stamp = datetime(2026, 11, 22, 20, tzinfo=UTC)
+    monkeypatch.setattr(live, "now", lambda: stamp)
+    monkeypatch.setattr(service, "now", lambda: stamp)
+    task_result = call(
+        client,
+        "POST",
+        task_path,
+        owner,
+        {
+            "title": "Synthetic overdue field check",
+            "due_date": "2026-11-22",
+        },
+    )
+    assert task_result.status_code == 201
+    task = task_result.json()
+    today = call(client, "GET", task_path, owner).json()["farm_today"]
+    assert today == "2026-11-23"
+    route = task_path + f"/{task['id']}/missed-review"
+    draft = {"expected_version": 1, "proposed_due_date": today, "reason": "Field was inaccessible"}
+    other = login(client, "other-farmer")
+    assert call(client, "POST", route, other, draft).status_code == 404
+    for invalid in ("2026-11-22", "2026-12-01"):
+        assert (
+            call(client, "POST", route, owner, draft | {"proposed_due_date": invalid}).status_code
+            == 409
+        )
+    reviewed = call(client, "POST", route, owner, draft)
+    assert reviewed.status_code == 200, reviewed.text
+    plan = reviewed.json()
+    assert plan["current_due_date"] == task["due_date"] and plan["proposed_due_date"] == today
+    assert plan["forecast_fetched_at"] is None and "Field was inaccessible" in plan["evidence_text"]
+    assert call(client, "POST", route, owner, draft).json() == plan
+    assert missed_decision(client, other, cultivation, plan).status_code == 404
+    assert missed_decision(client, owner, cultivation, plan, "rejected").status_code == 200
+    assert call(client, "GET", task_path, owner).json()["items"] == [task]
+    assert missed_decision(client, owner, cultivation, plan).status_code == 409
+
+    next_review = call(
+        client, "POST", route, owner, draft | {"proposed_due_date": "2026-11-30"}
+    ).json()
+    assert (
+        missed_decision(
+            client, owner, cultivation, next_review | {"action_hash": "0" * 64}
+        ).status_code
+        == 409
+    )
+    barrier = Barrier(2)
+
+    def accept(_):
+        barrier.wait(timeout=10)
+        return missed_decision(client, owner, cultivation, next_review)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = pool.map(accept, range(2))
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json() and first.json()["task_version"] == 2
+    assert call(client, "GET", task_path, owner).json()["items"][0]["due_date"] == "2026-11-30"
+    assert call(client, "GET", task_path + "/history", owner).json()["total"] == 2
+    history = call(client, "GET", cultivation + "/task-plans/history", owner).json()["items"]
+    assert {item["outcome"] for item in history} == {"accepted", "rejected"}
+    assert all(item["previous_due_date"] == task["due_date"] for item in history)
+    assert call(client, "POST", route, owner, draft | {"expected_version": 2}).status_code == 409
+
+
+def test_missed_task_rejects_changed_forecast_and_superseded_or_closed_task(weather_review):
+    client, owner, _, cultivation, forecast_route, alert_route, _, clock = weather_review
+    task = call(
+        client,
+        "POST",
+        cultivation + "/tasks",
+        owner,
+        {
+            "title": "Synthetic missed observation",
+            "due_date": "2026-11-22",
+        },
+    ).json()
+    task_route = cultivation + f"/tasks/{task['id']}"
+    route = task_route + "/missed-review"
+    clock["stamp"] += timedelta(minutes=25)
+    draft = {"expected_version": 1, "proposed_due_date": "2026-11-23"}
+    plan = call(client, "POST", route, owner, draft).json()
+    assert plan["forecast_fetched_at"] and "8.5 mm" in plan["evidence_text"]
+    assert decide_weather_review(client, owner, alert_route, plan).status_code == 404
+    clock["stamp"] += timedelta(minutes=10)
+    clock["precipitation"] = 11
+    assert call(client, "POST", forecast_route + "/refresh", owner, {}).status_code == 200
+    assert missed_decision(client, owner, cultivation, plan).status_code == 409
+    revised = call(client, "POST", route, owner, draft).json()
+    assert revised["id"] != plan["id"] and "11 mm" in revised["evidence_text"]
+    newer = call(client, "POST", route, owner, draft | {"reason": "Updated reason"}).json()
+    assert missed_decision(client, owner, cultivation, revised).status_code == 409
+    assert (
+        call(
+            client,
+            "POST",
+            task_route + "/status",
+            owner,
+            {
+                "status": "completed",
+                "expected_version": 1,
+            },
+        ).status_code
+        == 200
+    )
+    assert missed_decision(client, owner, cultivation, newer).status_code == 409
+    assert call(client, "GET", cultivation + "/task-plans/history", owner).json()["total"] == 0
+
+
+def weekly_binding(plan):
+    return {"expected_version": plan["version"], "action_hash": plan["action_hash"]}
+
+
+def test_weekly_revision_preserves_feedback_and_sends_private_notices(weather_review):
+    client, owner, _, cultivation, _, _, task, _ = weather_review
+    advisor = login(client, "advisor")
+    rider = login(client, "other-farmer")
+    suggestion = cultivation + f"/tasks/{task['id']}/weekly-suggestion"
+    original = call(client, "POST", suggestion, owner, {"expected_version": 1}).json()
+    plan_path = cultivation + f"/task-plans/weekly/{original['id']}"
+    notification_path = "/notifications"
+
+    def notices(who):
+        entries = call(client, "GET", notification_path, who).json()["items"]
+        return [item for item in entries if item["event_type"] == "advisor_review"]
+
+    binding = weekly_binding(original)
+    assignment = binding | {"advisor_email": "advisor@example.com"}
+    for _ in range(2):
+        assert call(client, "POST", plan_path + "/advisor", owner, assignment).status_code == 200
+    assert [entry["review_plan_id"] for entry in notices(advisor)] == [original["id"]]
+    review = f"/plan-reviews/{original['id']}"
+    assert call(client, "GET", review, rider).status_code == 404
+    assert call(client, "GET", review, advisor).json()["role"] == "advisor"
+    decision_path = f"/advisor/cases/{original['id']}/decision"
+    decision = binding | {"outcome": "changes_requested", "reason": "Review the next dry day."}
+    for _ in range(2):
+        assert call(client, "POST", decision_path, advisor, decision).status_code == 200
+    assert len(notices(owner)) == 1 and notices(owner)[0]["review_plan_id"] == original["id"]
+    assert "Review the next dry day." not in notices(owner)[0]["body"]
+    assert call(client, "GET", review, owner).json()["plan"]["can_revise"]
+    assert (
+        call(client, "POST", suggestion, owner, {"expected_version": 1}).json()["id"]
+        == original["id"]
+    )
+
+    revise = plan_path + "/revise"
+    amendment = binding | {"proposed_due_date": "2026-11-25"}
+    assert call(client, "POST", revise, rider, amendment).status_code == 404
+    assert (
+        call(
+            client, "POST", revise, owner, binding | {"proposed_due_date": "2026-11-24"}
+        ).status_code
+        == 409
+    )
+    changed = call(client, "POST", revise, owner, amendment)
+    assert changed.status_code == 200, changed.text
+    revised = changed.json()
+    assert revised["revises_plan_id"] == original["id"]
+    assert revised["prior_proposed_date"] == "2026-11-24"
+    assert (
+        revised["action_hash"] != original["action_hash"] and revised["state"] == "awaiting_advisor"
+    )
+    assert call(client, "POST", revise, owner, amendment).json() == revised
+    assert len(notices(advisor)) == 2
+    assert call(client, "GET", review, advisor).status_code == 404
+    new_url = f"/advisor/cases/{revised['id']}/decision"
+    assert call(client, "POST", new_url, advisor, decision).status_code == 409
+    clearance = weekly_binding(revised) | {"outcome": "cleared", "reason": "Revised date reviewed."}
+    assert call(client, "POST", new_url, advisor, clearance).status_code == 200
+    assert notices(owner)[0]["review_plan_id"] == revised["id"]
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [task]
+    history = call(client, "GET", cultivation + "/task-plans/weekly-batch/history", owner).json()[
+        "items"
+    ]
+    assert [(plan["id"], plan["advisor_reason"]) for plan in history] == [
+        (revised["id"], "Revised date reviewed."),
+        (original["id"], "Review the next dry day."),
+    ]
+
+
+def test_weekly_batch_saves_only_selected_versions_in_one_transaction(weather_review):
+    client, owner, _, cultivation, _, _, first, _ = weather_review
+    task_path = cultivation + "/tasks"
+    for title in ("Second weekly task", "Third weekly task"):
+        assert (
+            call(
+                client, "POST", task_path, owner, {"title": title, "due_date": first["due_date"]}
+            ).status_code
+            == 201
+        )
+    assert (
+        call(
+            client,
+            "POST",
+            cultivation + "/stage-confirmation",
+            owner,
+            {"stage": "Seedling", "expected_version": 1},
+        ).status_code
+        == 200
+    )
+    batch = cultivation + "/task-plans/weekly-batch"
+    generated = call(client, "POST", batch + "/prepare", owner, {})
+    assert generated.status_code == 200 and generated.json()["prepared"] == 3
+    offered = call(client, "GET", batch, owner).json()["items"]
+    assert len(offered) == 3 and all(item["state"] == "ready" for item in offered)
+    assert call(client, "POST", batch + "/prepare", owner, {}).status_code == 200
+    assert call(client, "GET", batch, owner).json()["items"] == offered
+    selected = [weekly_binding(plan) | {"plan_id": plan["id"]} for plan in offered[:2]]
+    elsewhere = login(client, "other-farmer")
+    assert (
+        call(client, "POST", batch + "/accept", elsewhere, {"changes": selected}).status_code == 404
+    )
+    assert (
+        call(
+            client, "POST", batch + "/accept", owner, {"changes": [selected[0], selected[0]]}
+        ).status_code
+        == 409
+    )
+    bad = {"changes": [selected[0], selected[1] | {"action_hash": "0" * 64}]}
+    assert call(client, "POST", batch + "/accept", owner, bad).status_code == 409
+    assert call(client, "GET", task_path + "/history", owner).json()["total"] == 3
+    committed = call(client, "POST", batch + "/accept", owner, {"changes": selected})
+    assert committed.status_code == 200, committed.text
+    assert (
+        call(client, "POST", batch + "/accept", owner, {"changes": selected}).json()
+        == committed.json()
+    )
+    assert call(client, "GET", task_path + "/history", owner).json()["total"] == 5
+    assert call(client, "GET", batch, owner).json()["items"] == offered[2:]
+
+
+def test_weekly_planner_uses_the_farm_week_and_opens_owned_tasks(weather_review):
+    client, owner, _, cultivation, _, _, task, _ = weather_review
+    task_path = cultivation + "/tasks"
+    dates = {"overdue": "2026-11-22", "end": "2026-11-29", "outside": "2026-11-30"}
+    saved = {}
+    for title, day in dates.items():
+        result = call(client, "POST", task_path, owner, {"title": title, "due_date": day})
+        assert result.status_code == 201
+        saved[title] = result.json()
+    week = call(client, "GET", cultivation + "/week", owner).json()
+    assert (week["starts_on"], week["ends_on"]) == ("2026-11-23", "2026-11-29")
+    assert [item["id"] for item in week["items"]] == [
+        saved["overdue"]["id"],
+        task["id"],
+        saved["end"]["id"],
+    ]
+    assert week["items"][1]["rain_alert"] and week["items"][1]["precipitation_mm"] == 8.5
+    picked = call(client, "GET", task_path + f"?task_id={saved['end']['id']}", owner).json()
+    assert picked["items"] == [saved["end"]]
+    assert (
+        call(client, "GET", cultivation + "/week", login(client, "other-farmer")).status_code == 404
+    )
+
+
+def test_weekly_suggestion_requires_assigned_clearance_when_stage_is_missing(
+    weather_review, accounts
+):
+    client, owner, _, cultivation, _, _, task, _ = weather_review
+    route = cultivation + f"/tasks/{task['id']}/weekly-suggestion"
+    response = call(client, "POST", route, owner, {"expected_version": 1})
+    assert response.status_code == 200, response.text
+    plan = response.json()
+    assert plan["proposed_due_date"] == "2026-11-24"
+    assert plan["requires_advisor"] and plan["state"] == "advisor_required"
+    assert plan["evidence"]["confirmed_stage"] is None
+    advisor = login(client, "advisor")
+    admin = login(client, "admin")
+    with Session(accounts[1]) as db, db.begin():
+        other = db.scalar(select(User).where(User.email == "other-farmer@example.com"))
+        other.role = "advisor"
+    outsider = login(client, "other-farmer")
+    inbox = "/advisor/cases"
+    assert call(client, "GET", inbox, admin).status_code == 403
+    assert call(client, "GET", inbox, advisor).json()["total"] == 0
+
+    def owner_url(plan, suffix):
+        return cultivation + f"/task-plans/weekly/{plan['id']}/{suffix}"
+
+    def accept(plan):
+        return call(
+            client,
+            "POST",
+            owner_url(plan, "decision"),
+            owner | {"Idempotency-Key": plan["id"]},
+            weekly_binding(plan) | {"outcome": "accepted"},
+        )
+
+    def refer(plan):
+        return call(
+            client,
+            "POST",
+            owner_url(plan, "advisor"),
+            owner,
+            weekly_binding(plan) | {"advisor_email": "advisor@example.com"},
+        )
+
+    assert accept(plan).status_code == 409
+    referral = refer(plan)
+    assert referral.status_code == 200, referral.text
+    assert referral.json()["state"] == "awaiting_advisor"
+    assert call(client, "GET", inbox, outsider).json()["total"] == 0
+    scoped = call(client, "GET", inbox, advisor).json()["items"][0]
+    assert scoped["id"] == plan["id"] and scoped["title"] == task["title"]
+    assert "farm_id" not in scoped and "cultivation_id" not in scoped
+    assert (
+        call(client, "POST", owner_url(plan, "advisor/revoke"), owner, weekly_binding(plan)).json()[
+            "state"
+        ]
+        == "revoked"
+    )
+    assert call(client, "GET", inbox, advisor).json()["total"] == 0
+    renewed = call(client, "POST", route, owner, {"expected_version": 1}).json()
+    assert renewed["id"] != plan["id"] and accept(renewed).status_code == 409
+    assert refer(renewed).status_code == 200
+    old = inbox + f"/{plan['id']}/decision"
+    decision = inbox + f"/{renewed['id']}/decision"
+    clearance = weekly_binding(renewed) | {
+        "outcome": "cleared",
+        "reason": "Synthetic timing review",
+    }
+    assert call(client, "POST", old, advisor, clearance).status_code == 404
+    assert call(client, "POST", decision, outsider, clearance).status_code == 404
+    assert (
+        call(client, "POST", decision, advisor, clearance | {"action_hash": "0" * 64}).status_code
+        == 409
+    )
+    assert call(client, "POST", decision, advisor, clearance).status_code == 200
+    assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [task]
+    assert call(client, "GET", route, owner).json()["plan"]["state"] == "cleared"
+    first = accept(renewed)
+    assert first.status_code == 200, first.text
+    assert accept(renewed).json() == first.json()
+    assert call(client, "GET", cultivation + "/tasks/history", owner).json()["total"] == 2
+
+
+def test_weekly_suggestion_uses_confirmed_stage_without_sharing_and_blocks_stale_evidence(
+    weather_review,
+):
+    client, owner, _, cultivation, forecast_route, _, task, clock = weather_review
+    staged = call(
+        client,
+        "POST",
+        cultivation + "/stage-confirmation",
+        owner,
+        {"stage": "Seedling", "expected_version": 1},
+    )
+    assert staged.status_code == 200
+    clock["stamp"] += timedelta(minutes=25)
+    route = cultivation + f"/tasks/{task['id']}/weekly-suggestion"
+    draft = call(client, "POST", route, owner, {"expected_version": 1}).json()
+    assert draft["state"] == "ready" and draft["evidence"]["confirmed_stage"] == "Seedling"
+    assert call(client, "POST", route, owner, {"expected_version": 1}).json() == draft
+
+    def accept(plan):
+        return call(
+            client,
+            "POST",
+            cultivation + f"/task-plans/weekly/{plan['id']}/decision",
+            owner | {"Idempotency-Key": plan["id"]},
+            weekly_binding(plan) | {"outcome": "accepted"},
+        )
+
+    clock["stamp"] += timedelta(minutes=10)
+    clock["precipitation"] = 12
+    assert call(client, "POST", forecast_route + "/refresh", owner, {}).status_code == 200
+    assert accept(draft).status_code == 409
+    current = call(client, "POST", route, owner, {"expected_version": 1}).json()
+    assert current["evidence"]["due_rain_mm"] == 12 and current["id"] != draft["id"]
+    assert accept(current).status_code == 200
+
+
 def prepare_weather_review(client, owner, route, task, alert, proposed="2026-11-24"):
     return call(
         client,
@@ -816,6 +1209,10 @@ def test_task_plan_acceptance_creates_exactly_one_task(account_client, farm_reco
     assert call(client, "POST", route, owner, {"title": "Unreviewed action"}).status_code == 422
     plan = review_plan(client, route, owner)
     assert plan["state"] == "pending" and plan["decision"] is None
+    diary = cultivation + "/diary"
+    assert [entry["kind"] for entry in call(client, "GET", diary, owner).json()["items"]] == [
+        "observation"
+    ]
     assert review_plan(client, route, owner) == plan
     assert call(client, "GET", cultivation + "/tasks", owner).json()["total"] == 0
     assert plan_decision(client, route, owner, plan, expected_version=2).status_code == 409
@@ -852,8 +1249,115 @@ def test_task_plan_acceptance_creates_exactly_one_task(account_client, farm_reco
     events = call(client, "GET", route + "/history", owner).json()["items"]
     assert len(events) == 1 and events[0]["evidence_text"] == plan["evidence_text"]
     assert events[0]["task_id"] == decision["task_id"]
+    assert [entry["kind"] for entry in call(client, "GET", diary, owner).json()["items"]] == [
+        "create_task",
+        "observation",
+    ]
     saved = call(client, "GET", route, owner).json()["plan"]
     assert saved["state"] == "accepted" and saved["decision"] == decision
+
+
+def test_diary_orders_terminal_task_events_and_is_private(account_client, farm_records):
+    client = account_client
+    owner = login(client)
+    _, cultivation, _ = path(farm_records["farmer"])
+    for status in ("completed", "cancelled"):
+        task = call(
+            client,
+            "POST",
+            cultivation + "/tasks",
+            owner,
+            {"title": f"Synthetic {status} task", "due_date": "2099-01-04"},
+        ).json()
+        assert (
+            call(
+                client,
+                "POST",
+                cultivation + f"/tasks/{task['id']}/status",
+                owner,
+                {"expected_version": task["version"], "status": status},
+            ).status_code
+            == 200
+        )
+    diary = cultivation + "/diary"
+    page = call(client, "GET", diary + "?page_size=2", owner).json()
+    assert page["total"] == 3
+    assert [entry["kind"] for entry in page["items"]] == ["cancelled", "completed"]
+    assert (
+        call(client, "GET", diary + "?page=2&page_size=2", owner).json()["items"][0]["kind"]
+        == "observation"
+    )
+    assert call(client, "GET", diary, login(client, "other-farmer")).status_code == 404
+    assert call(client, "GET", diary, login(client, "admin")).status_code == 403
+
+
+def test_task_reminders_deduplicate_and_disappear_when_tasks_change(
+    account_client, farm_records, identity_engines
+):
+    client = account_client
+    owner = login(client)
+    outsider = login(client, "other-farmer")
+    _, cultivation, _ = path(farm_records["farmer"])
+    _, engine, _ = identity_engines
+    with engine.connect() as connection:
+        today = connection.scalar(text("SELECT timezone('Asia/Colombo', now())::date"))
+    tasks = [
+        call(
+            client,
+            "POST",
+            cultivation + "/tasks",
+            owner,
+            {
+                "title": "Synthetic reminder task",
+                "due_date": (today + timedelta(days=days)).isoformat(),
+            },
+        ).json()
+        for days in (-1, 1, 2)
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(reminders.process_batch, (engine, engine)))
+    inbox = call(client, "GET", "/notifications", owner).json()
+    assert inbox["total"] == inbox["unread_count"] == 2
+    assert {item["event_type"] for item in inbox["items"]} == {"task_due", "task_overdue"}
+    assert call(client, "GET", "/notifications", outsider).json()["total"] == 0
+    overdue = next(item for item in inbox["items"] if item["event_type"] == "task_overdue")
+    assert (
+        call(
+            client,
+            "POST",
+            cultivation + f"/tasks/{tasks[0]['id']}/status",
+            owner,
+            {"expected_version": tasks[0]["version"], "status": "completed"},
+        ).status_code
+        == 200
+    )
+    assert (
+        call(
+            client,
+            "PATCH",
+            "/notifications/" + overdue["id"],
+            owner,
+            {"read": True},
+        ).status_code
+        == 404
+    )
+    assert (
+        call(
+            client,
+            "PATCH",
+            cultivation + f"/tasks/{tasks[1]['id']}",
+            owner,
+            {
+                "expected_version": tasks[1]["version"],
+                "title": tasks[1]["title"],
+                "due_date": (today + timedelta(days=5)).isoformat(),
+            },
+        ).status_code
+        == 200
+    )
+    reminders.process_batch(engine)
+    inbox = call(client, "GET", "/notifications", owner).json()
+    assert inbox["total"] == inbox["unread_count"] == 0
 
 
 def test_task_plan_rejection_and_private_parent_scope(account_client, farm_records):

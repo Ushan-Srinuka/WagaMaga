@@ -12,12 +12,20 @@ class NotificationOut(BaseModel):
 
     id: UUID
     event_type: Literal[
-        "role_changed", "account_reenabled", "password_changed", "support_updated", "weather_review"
+        "role_changed",
+        "account_reenabled",
+        "password_changed",
+        "support_updated",
+        "weather_review",
+        "advisor_review",
+        "task_due",
+        "task_overdue",
     ]
     title: str
     body: str
     created_at: datetime
     read_at: datetime | None
+    review_plan_id: UUID | None = None
 
 
 class NotificationChange(BaseModel):

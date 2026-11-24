@@ -7,15 +7,18 @@ import type {
   FarmTaskEvent,
   FarmWeather,
   Page,
+  TaskPage,
   TaskStatus,
 } from '../../lib/farms'
 import { farmWrite, timestamp } from '../../lib/farms'
 import DemoWeather from './DemoWeather'
 import LiveWeather from './LiveWeather'
+import MissedTaskReview from './MissedTaskReview'
 import { Pagination, ReadState, SaveError } from './RecordUI'
 import { useRecord, useSave } from './record-hooks'
 import SuggestedPlans from './SuggestedPlans'
 import WeatherAlerts from './WeatherAlerts'
+import WeeklyPlanner from './WeeklyPlanner'
 
 const statuses = {
   pending: 'Pending',
@@ -57,11 +60,13 @@ export default function TaskPanel({
   const [filter, setFilter] = useState<TaskStatus | 'all'>('pending')
   const [page, setPage] = useState(1)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [missedTaskId, setMissedTaskId] = useState<string | null>(null)
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [showDemo, setShowDemo] = useState(false)
   const [taskRevision, setTaskRevision] = useState(0)
-  const tasks = useRecord<Page<FarmTask>>(
-    `${path}?status=${filter}&page=${page}`,
+  const tasks = useRecord<TaskPage>(
+    `${path}?status=${focusedTaskId ? 'all' : filter}&page=${page}${focusedTaskId ? `&task_id=${focusedTaskId}` : ''}`,
   )
   const livePath = cultivationPath + '/weather'
   const liveWeather = useRecord<FarmWeather>(livePath)
@@ -72,6 +77,8 @@ export default function TaskPanel({
     weather.data?.source === 'fixture' ? weather.data.review_due_on : null
   const save = useSave()
   const canChange = !archived && !save.busy && !save.blocked
+  const taskEditorOpen = Boolean(draft || missedTaskId)
+  const farmToday = tasks.data?.farm_today
 
   function reloadTasks() {
     setPage(1)
@@ -122,7 +129,7 @@ export default function TaskPanel({
         {!archived && !draft && (
           <button
             className="primary"
-            disabled={!canChange || !tasks.data}
+            disabled={!canChange || !tasks.data || taskEditorOpen}
             onClick={() => setDraft({ title: '', due_date: '' })}
           >
             Add task
@@ -132,6 +139,23 @@ export default function TaskPanel({
       {archived && (
         <p className="muted">Archived cultivation. Tasks are read only.</p>
       )}
+      <WeeklyPlanner
+        path={cultivationPath + '/week'}
+        tasksPath={path}
+        planPath={planPath}
+        timezone={timezone}
+        revision={`${liveWeather.data?.status}:${liveWeather.data?.forecast?.fetched_at}:${taskRevision}`}
+        archived={archived}
+        blocked={taskEditorOpen || save.busy}
+        changed={reloadTasks}
+        openTask={(id) => {
+          setFocusedTaskId(id)
+          setPage(1)
+          document
+            .getElementById('cultivation-task-list')
+            ?.scrollIntoView?.({ block: 'start' })
+        }}
+      />
       <LiveWeather record={liveWeather} path={livePath} farmPath={farmPath} />
       <WeatherAlerts
         path={livePath + '/alerts'}
@@ -141,6 +165,7 @@ export default function TaskPanel({
           setFilter('pending')
           reloadTasks()
         }}
+        onRuleChanged={() => setTaskRevision((value) => value + 1)}
       />
       {import.meta.env.DEV && (
         <div>
@@ -222,13 +247,26 @@ export default function TaskPanel({
           </div>
         </form>
       )}
-      <div className="field">
+      {focusedTaskId && (
+        <button
+          type="button"
+          disabled={taskEditorOpen || save.busy}
+          onClick={() => {
+            setFocusedTaskId(null)
+            setPage(1)
+          }}
+        >
+          Back to task list
+        </button>
+      )}
+      <div className="field" id="cultivation-task-list">
         <label htmlFor={filterId}>Task status</label>
         <select
           id={filterId}
-          value={filter}
-          disabled={save.busy || Boolean(draft)}
+          value={focusedTaskId ? 'all' : filter}
+          disabled={save.busy || taskEditorOpen}
           onChange={(event) => {
+            setFocusedTaskId(null)
             setFilter(event.target.value as TaskStatus | 'all')
             setPage(1)
           }}
@@ -256,6 +294,10 @@ export default function TaskPanel({
             </p>
           )}
           {tasks.data.items.map((task) => {
+            const overdue =
+              farmToday &&
+              task.status === 'pending' &&
+              task.due_date < farmToday
             const reviewWeather =
               !archived &&
               task.status === 'pending' &&
@@ -276,6 +318,7 @@ export default function TaskPanel({
                 </div>
                 <p>
                   Due <time dateTime={task.due_date}>{task.due_date}</time>
+                  {overdue && ' · Overdue'}
                 </p>
                 {weatherDay && (
                   <p className="muted">
@@ -288,8 +331,20 @@ export default function TaskPanel({
                 )}
                 {!archived && task.status === 'pending' && (
                   <div className="record-toolbar">
+                    {overdue && (
+                      <button
+                        type="button"
+                        disabled={!canChange || taskEditorOpen}
+                        onClick={() => {
+                          setNotice('')
+                          setMissedTaskId(task.id)
+                        }}
+                      >
+                        I missed this task
+                      </button>
+                    )}
                     <button
-                      disabled={!canChange || Boolean(draft)}
+                      disabled={!canChange || taskEditorOpen}
                       onClick={() =>
                         setDraft({
                           task,
@@ -302,24 +357,49 @@ export default function TaskPanel({
                       {reviewWeather ? 'Review this task' : 'Edit task'}
                     </button>
                     <button
-                      disabled={!canChange || Boolean(draft)}
+                      disabled={!canChange || taskEditorOpen}
                       onClick={() => close(task, 'completed')}
                     >
                       Mark complete
                     </button>
                     <button
                       className="danger-action"
-                      disabled={!canChange || Boolean(draft)}
+                      disabled={!canChange || taskEditorOpen}
                       onClick={() => close(task, 'cancelled')}
                     >
                       Cancel task
                     </button>
                   </div>
                 )}
+                {!archived && farmToday && missedTaskId === task.id && (
+                  <MissedTaskReview
+                    task={task}
+                    farmToday={farmToday}
+                    taskPath={path}
+                    planPath={planPath}
+                    timezone={timezone}
+                    weather={liveWeather.data}
+                    close={() => setMissedTaskId(null)}
+                    reload={() => {
+                      setMissedTaskId(null)
+                      liveWeather.reload()
+                      reloadTasks()
+                    }}
+                    finished={(outcome) => {
+                      setMissedTaskId(null)
+                      setNotice(
+                        outcome === 'accepted'
+                          ? 'Task date updated.'
+                          : 'Task date kept.',
+                      )
+                      reloadTasks()
+                    }}
+                  />
+                )}
               </article>
             )
           })}
-          {tasks.data.total > tasks.data.page_size && (
+          {tasks.data.total > tasks.data.page_size && !missedTaskId && (
             <Pagination result={tasks.data} page={page} change={setPage} />
           )}
         </>
@@ -328,7 +408,7 @@ export default function TaskPanel({
         path={planPath}
         timezone={timezone}
         archived={archived}
-        blockedByTaskEdit={Boolean(draft) || save.busy || !tasks.data}
+        blockedByTaskEdit={taskEditorOpen || save.busy || !tasks.data}
         onAccepted={() => {
           setFilter('pending')
           reloadTasks()

@@ -93,7 +93,7 @@ export default function NotificationsPage() {
             <h1>
               Notifications<span>.</span>
             </h1>
-            <p>Your account, support and farm weather updates.</p>
+            <p>Your account, support, weather and plan review updates.</p>
           </div>
           <span className="count-label">
             {page?.unread_count ?? '—'} unread
@@ -153,11 +153,21 @@ export default function NotificationsPage() {
                           <Link to="/support">Open My support requests</Link>
                         </p>
                       )}
-                      {item.event_type === 'weather_review' && (
+                      {['weather_review', 'task_due', 'task_overdue'].includes(
+                        item.event_type,
+                      ) && (
                         <p>
                           <Link to="/farms">Open My Farms</Link>
                         </p>
                       )}
+                      {item.event_type === 'advisor_review' &&
+                        item.review_plan_id && (
+                          <p>
+                            <Link to={`/plan-reviews/${item.review_plan_id}`}>
+                              Open plan review
+                            </Link>
+                          </p>
+                        )}
                       <time dateTime={item.created_at}>
                         {formatDate(item.created_at)}
                       </time>
@@ -198,10 +208,6 @@ export default function NotificationsPage() {
           )
         ) : null}
       </section>
-      <p className="page-footnote">
-        These are in-app account and support updates. Email notifications are
-        not enabled.
-      </p>
     </>
   )
 }

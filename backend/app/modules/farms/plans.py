@@ -7,6 +7,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import contains_eager
 
+from app.modules.advisory.models import AdvisorDecision
 from app.modules.farms import schemas as dto
 from app.modules.farms import service, tasks
 from app.modules.farms.models import FarmTask, TaskPlan, TaskPlanDecision
@@ -205,6 +206,7 @@ def history(db, ids, farm_id, cultivation_id, query):
     )
 
     def project(decision):
+        advisor = db.get(AdvisorDecision, decision.plan_id)
         return dto.PlanHistoryOut(
             **dto.PlanDecisionOut.model_validate(decision).model_dump(),
             title=decision.plan.title,
@@ -212,6 +214,8 @@ def history(db, ids, farm_id, cultivation_id, query):
             evidence_text=decision.plan.evidence_text,
             action_type=decision.plan.action_type,
             previous_due_date=decision.plan.previous_due_date,
+            advisor_outcome=advisor.outcome if advisor else None,
+            advisor_reason=advisor.reason if advisor else None,
         )
 
     return service.paged(db, statement, query, project)

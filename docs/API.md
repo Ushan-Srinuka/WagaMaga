@@ -102,7 +102,7 @@ All paths are relative to `/api/v1/farms/{farm_id}/cultivations/{cultivation_id}
 
 | Method and path | Contract |
 | --- | --- |
-| GET collection | Paginated tasks ordered by due date and UUID. `status=pending\|completed\|cancelled\|all` defaults to pending. |
+| GET collection | Paginated tasks ordered by due date and UUID, plus the farm-local `farm_today` date. `status=pending\|completed\|cancelled\|all` defaults to pending. |
 | POST collection | Create a pending task with `{title, due_date}` and return 201. Title is trimmed and limited to 120 characters. Due date is an ISO calendar date. |
 | PATCH `/{task_id}` | Save both title and due date on a pending task with `{title, due_date, expected_version}`. An unchanged edit is a no-op. |
 | POST `/{task_id}/status` | Complete or cancel a pending task with `{status, expected_version}`. The new status is final. |
@@ -147,6 +147,39 @@ These owner-only routes are relative to `/api/v1/farms/{farm_id}/cultivations/{c
 | POST `/reschedules/{plan_id}/decision` | Send `Idempotency-Key` equal to the plan ID and `{expected_version, action_hash, outcome}`. Acceptance changes the date. Rejection records the decision with no task change. |
 
 Refresh, setting changes and relevant task writes update the alert keyed by task and due date. A date review requires a fresh qualifying alert and a different farm-local date within seven days. Acceptance rechecks the latest review, exact action hash, task and parent versions, forecast freshness and threshold. Changed evidence or a superseded review returns 409. The task revision and execution receipt commit together. Identical decision retries return the original receipt. `GET /task-plans/history` includes the original and proposed dates for these decisions.
+
+### Missed tasks
+
+From the owned cultivation route, `POST /tasks/{task_id}/missed-review` takes `{expected_version, proposed_due_date, reason?}` for a pending task whose due date precedes `farm_today`. The optional reason is limited to 240 characters and retained with private plan evidence. The date must be between today and seven days from today on the farm calendar. The response has the review ID, version, action hash, original and proposed dates, evidence text, expiry and nullable `forecast_fetched_at`. It uses a matching current saved forecast when available.
+
+`POST /task-plans/missed-reviews/{plan_id}/decision` accepts the same decision body and `Idempotency-Key` as the weather review. The farmer's decision binds to the exact current review. Changed task, parent or forecast evidence and superseded or expired reviews return 409. Acceptance commits the date, task revision and decision atomically. Keeping the date adds only a decision. Both appear in `/task-plans/history`.
+
+### Weekly planner and assigned review
+
+All cultivation paths below are relative to `/api/v1/farms/{farm_id}/cultivations/{cultivation_id}`. The server supplies the farm-local week start and end, including today and six following days.
+
+| Route | Contract |
+| --- | --- |
+| `GET /week` | Paged overdue pending and in-week tasks with available forecast amounts and threshold alerts. |
+| `GET /tasks?task_id={id}&status=all` | Opens the matching task within the same owned cultivation. |
+| `GET /tasks/{id}/weekly-suggestion` | Latest persisted weekly suggestion for the task, or `plan: null`. |
+| `POST /tasks/{id}/weekly-suggestion` | Accepts `{expected_version}`. Uses current qualifying weather and the earliest later forecast day below the saved threshold. Persists one date change for review. |
+| `POST /task-plans/weekly/{id}/advisor` | Explicitly shares the suggestion with the active advisor identified by `advisor_email`. Send the plan's `expected_version` and `action_hash`. |
+| `POST /task-plans/weekly/{id}/advisor/revoke` | Revokes access for this plan and assignment. Send the exact version and hash. |
+| `POST /task-plans/weekly/{id}/revise` | Send the returned plan's version and hash plus `proposed_due_date`. Creates one linked revision for a different supported date and sends it to the same active advisor. Identical retries return that revision. |
+| `POST /task-plans/weekly/{id}/decision` | Sends version, hash, outcome and `Idempotency-Key` equal to the plan ID. Unconfirmed stage or a referral requires active, assigned clearance for acceptance. Keeping the current date records the farmer decision. |
+| `GET /task-plans/weekly-batch` and `/history` | Paged combined suggestions and a history of saved versions with advisor outcomes. |
+| `POST /task-plans/weekly-batch/prepare` | Uses an empty body to prepare up to 20 candidate tasks from current forecast evidence. |
+| `POST /task-plans/weekly-batch/accept` | Accepts `changes`, an array of up to 20 `{plan_id, expected_version, action_hash}` selections. Returns receipts. Duplicate tasks and stale or uncleared selections fail the transaction. Identical retries reuse the saved action receipts. |
+
+`GET /api/v1/advisor/cases` returns current assigned, non-revoked case snapshots with task title, date comparison, confirmed stage and forecast figures. `POST /api/v1/advisor/cases/{plan_id}/decision` accepts version, hash, `outcome` (`cleared`, `declined`, `changes_requested`), and a reason up to 500 characters. Decisions are immutable and repeating the same decision returns its receipt while the case is accessible. The advisor cannot update the farm or task. All writes use the existing browser origin check. Changed evidence, superseded versions and closed access prevent execution. Farmer plan history includes a recorded advisor decision when present.
+
+Review assignment, resubmission and first advisor decision each record a generic recipient update of type `advisor_review`. The `review_plan_id` on these notices opens `GET /api/v1/plan-reviews/{id}`. Farmers can open their own saved versions. Advisors can open current assigned cases. The link checks access on every request and exposes no farm details from the notification itself.
+
+### Cultivation diary and task reminders
+
+- `GET /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/diary` returns the standard paginated result, newest first. Entries include an observation, task completion or cancellation, or executed plan action, with its timestamp and applicable due dates. Access follows cultivation history ownership and lifecycle rules.
+- The existing notifications list includes recipient-owned `task_due` and `task_overdue` notices. The list, unread count and read-state changes all exclude notices that no longer match an active task, date or reminder type.
 
 ## Other route groups and future scope
 

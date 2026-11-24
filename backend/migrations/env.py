@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, pool
 
 from app.core.config import Settings
 from app.db.base import Base
+from app.modules.advisory import models as advisory_models  # noqa: F401
 from app.modules.farms import models as farm_models  # noqa: F401
 from app.modules.identity import models  # noqa: F401 - register migration metadata
 from app.modules.knowledge import models as knowledge_models  # noqa: F401

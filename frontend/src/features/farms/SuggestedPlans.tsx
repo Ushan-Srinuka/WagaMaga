@@ -172,6 +172,12 @@ export function PlanHistory({
                   : `${outcomes[decision.outcome]} · Due ${decision.due_date}`}
               </p>
               <p>{decision.evidence_text}</p>
+              {decision.advisor_reason && (
+                <p>
+                  Advisor review · {decision.advisor_outcome?.replace('_', ' ')}{' '}
+                  · {decision.advisor_reason}
+                </p>
+              )}
               <p className="muted">
                 {timestamp(decision.decided_at, timezone)} · {timezone}
               </p>

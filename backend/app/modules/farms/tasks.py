@@ -11,13 +11,16 @@ from app.modules.weather import alerts
 
 def list_tasks(db, ids, farm_id, cultivation_id, query):
     actor = service.farmer(db, ids)
-    service.cultivation_for(db, actor.id, cultivation_id, farm_id=farm_id)
+    farm, _ = service.cultivation_for(db, actor.id, cultivation_id, farm_id=farm_id)
     statement = select(FarmTask).where(FarmTask.cultivation_id == cultivation_id)
     if query.status != "all":
         statement = statement.where(FarmTask.status == query.status)
-    return service.paged(
+    if query.task_id is not None:
+        statement = statement.where(FarmTask.id == query.task_id)
+    page = service.paged(
         db, statement.order_by(FarmTask.due_date, FarmTask.id), query, dto.TaskOut.model_validate
     )
+    return dto.TaskPage(**page, farm_today=service.local_today(db, farm))
 
 
 def task_history(db, ids, farm_id, cultivation_id, query):
