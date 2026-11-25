@@ -1,7 +1,7 @@
 """Review several independent date changes and apply a selected set atomically."""
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.modules.farms import date_reviews, plans, service, tasks, weekly
 from app.modules.farms import schemas as dto
@@ -19,27 +19,36 @@ def list_plans(db, ids, farm_id, cultivation_id, query, *, history=False):
     actor = service.farmer(db, ids)
     farm, cultivation = service.cultivation_for(db, actor.id, cultivation_id, farm_id=farm_id)
     stamp = live.now()
-    statement = select(TaskPlan).where(
-        TaskPlan.cultivation_id == cultivation.id, TaskPlan.evidence_code == weekly.POLICY
-    )
+    statement = select(TaskPlan).where(TaskPlan.cultivation_id == cultivation.id)
     if history:
-        statement = statement.order_by(TaskPlan.created_at.desc(), TaskPlan.id.desc())
+        statement = statement.where(TaskPlan.evidence_code == weekly.POLICY).order_by(
+            TaskPlan.created_at.desc(), TaskPlan.id.desc()
+        )
     else:
         today = service.local_today(db, farm, at=stamp)
+        addition = plans.newest_plan(db, cultivation.id)
         statement = (
-            statement.join(FarmTask, FarmTask.id == TaskPlan.target_task_id)
+            statement.outerjoin(FarmTask, FarmTask.id == TaskPlan.target_task_id)
             .where(
-                FarmTask.status == "pending",
-                TaskPlan.previous_due_date.between(today, today + weekly.WEEK),
-                date_reviews.current_plan_filter(),
+                or_(
+                    (TaskPlan.evidence_code == weekly.POLICY)
+                    & (FarmTask.status == "pending")
+                    & TaskPlan.previous_due_date.between(today, today + weekly.WEEK)
+                    & date_reviews.current_plan_filter(),
+                    (TaskPlan.id == addition.id) & (TaskPlan.evidence_code == plans.EVIDENCE_CODE)
+                    if addition is not None
+                    else False,
+                ),
                 ~select(TaskPlanDecision.plan_id)
                 .where(TaskPlanDecision.plan_id == TaskPlan.id)
                 .exists(),
             )
-            .order_by(TaskPlan.previous_due_date, TaskPlan.id)
+            .order_by(TaskPlan.previous_due_date.nulls_last(), TaskPlan.id)
         )
 
     def project(plan):
+        if plan.action_type == plans.ACTION:
+            return plans.view(plan, None, farm, cultivation, stamp)
         task = weekly.read_task(db, cultivation.id, plan.target_task_id)
         return weekly.view(db, farm, cultivation, task, plan, stamp)
 
@@ -88,19 +97,36 @@ def prepare(db, ids, farm_id, cultivation_id, request_id):
 def accept(db, ids, farm_id, cultivation_id, data, request_id):
     _, farm, cultivation = tasks.writable_context(db, ids, farm_id, cultivation_id)
     service.active(farm, cultivation)
-    selected = [
-        date_reviews.plan_for_decision(db, cultivation.id, item.plan_id, weekly.POLICY)
-        for item in data.changes
-    ]
-    if len({plan.target_task_id for plan in selected}) != len(selected):
-        raise plans.conflict("Choose only one suggestion for each task.")
-    decisions = []
+    selected = []
     for item in data.changes:
+        plan = db.scalar(
+            select(TaskPlan).where(
+                TaskPlan.id == item.plan_id,
+                TaskPlan.cultivation_id == cultivation.id,
+                or_(
+                    (TaskPlan.action_type == plans.ACTION)
+                    & (TaskPlan.evidence_code == plans.EVIDENCE_CODE),
+                    (TaskPlan.action_type == date_reviews.ACTION)
+                    & (TaskPlan.evidence_code == weekly.POLICY),
+                ),
+            )
+        )
+        if plan is None:
+            raise service.missing()
+        selected.append(plan)
+    targets = [plan.target_task_id for plan in selected if plan.target_task_id is not None]
+    if len(set(targets)) != len(targets):
+        raise plans.conflict("Choose only one suggestion for each task.")
+    if len({plan.id for plan in selected}) != len(selected):
+        raise plans.conflict("Choose each plan only once.")
+    decisions = []
+    for item, plan in zip(data.changes, selected, strict=True):
         decision = dto.PlanDecision(
             expected_version=item.expected_version, action_hash=item.action_hash, outcome="accepted"
         )
+        decide = plans.decide if plan.action_type == plans.ACTION else weekly.decide
         decisions.append(
-            weekly.decide(
+            decide(
                 db, ids, farm_id, cultivation_id, item.plan_id, item.plan_id, decision, request_id
             )
         )

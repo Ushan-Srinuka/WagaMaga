@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import Notice from '../../components/Notice'
 import { farmWrite } from '../../lib/farms'
 import { useRecord, useSave } from '../farms/record-hooks'
+import ResearchPassage from './ResearchPassage'
 
 const chilliPath = '/knowledge/chilli'
 const guidancePath = `${chilliPath}/guidance`
@@ -56,6 +57,8 @@ type Answer =
       kind: 'research'
       method: 'reference' | 'gemini'
       answer: string
+      corpus_version: string
+      passage_id: string
       citation: {
         title: string
         publisher: string
@@ -120,12 +123,16 @@ export default function ChilliQuestionsPage({
       <div className="page-intro">
         <h1>{heading}</h1>
         <p>{intro}</p>
+        {mode === 'pilot' && (
+          <p>Scope · Chilli cultivations in Anuradhapura District.</p>
+        )}
         {mode !== 'research' && (
           <Link to={chilliPath}>Back to Chilli questions</Link>
         )}
         {mode === 'research' && (
           <div className="button-row">
             <Link to={guidancePath}>Chilli farm guidance</Link>
+            <Link to="/farms">Ask about a chilli cultivation’s planner</Link>
             {import.meta.env.DEV && (
               <>
                 <Link to={localPath}>Search reviewed excerpts locally</Link>
@@ -140,8 +147,12 @@ export default function ChilliQuestionsPage({
         {record.error !== undefined && (
           <Notice message="Chilli questions could not be loaded." />
         )}
-        {record.data && !canAnswer && (
-          <p>Chilli answers are still being reviewed.</p>
+        {mode === 'pilot' && record.data && (
+          <p role="status">
+            {record.data.released
+              ? 'Pilot status · Available for the listed questions.'
+              : 'Pilot status · Chilli answers are still being reviewed.'}
+          </p>
         )}
         {record.data && canAnswer && (
           <form
@@ -240,6 +251,12 @@ export default function ChilliQuestionsPage({
                 evidence.
               </p>
             )}
+            {mode === 'pilot' && (
+              <p>
+                The reviewed pilot sources do not support an answer for this
+                question.
+              </p>
+            )}
           </div>
         )}
         {result?.status === 'answered' && result.kind === 'research' && (
@@ -256,6 +273,11 @@ export default function ChilliQuestionsPage({
                   : 'Published research summary'}
             </p>
             <p>{result.answer}</p>
+            <ResearchPassage
+              key={result.passage_id}
+              id={result.passage_id}
+              version={result.corpus_version}
+            />
             {'section' in result.citation ? (
               <>
                 <p>
@@ -312,6 +334,9 @@ export default function ChilliQuestionsPage({
             <p>{pdf.answer}</p>
             <p>
               {pdf.citation.title} · Page {pdf.citation.number}
+            </p>
+            <p className="record-note">
+              Source version · {pdf.citation.version_id}
             </p>
             {!referenceOnly && pdf.citation.excerpt !== pdf.answer && (
               <blockquote lang="si">{pdf.citation.excerpt}</blockquote>

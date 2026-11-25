@@ -28,11 +28,13 @@ The intended journey is: record cultivation context and observations; inspect cu
 
 As the relevant features are implemented, provide direct controls for recording observations, completing tasks, inspecting a suggestion's reason/source and requesting advisor review. These are entry points to existing permission-checked workflows, not generic AI write tools. Final navigation placement remains a later UI detail.
 
-A combined cultivation diary and an "I missed this task" revision entry point are [planned follow-ups in ROADMAP.md](ROADMAP.md#planned-planner-follow-ups). Their screen details and completion conditions are deferred until their dependencies work. Do not add those controls to the current Farm Records slice or expose nonfunctional farming actions on the homepage.
+The combined cultivation diary and **I missed this task** are available inside the cultivation workspace. See the [planner follow-ups](ROADMAP.md#planner-follow-ups).
 
 ### Cultivation diary and reminders
 
-Open **Cultivation history** to see the diary first, with farm-local timestamps and links to observation history. Detailed task, plan and record histories stay on the same page. **Notifications** shows due-soon and overdue task reminders for the farmer. Completed, cancelled and moved tasks stop showing outdated reminders.
+Open **Cultivation history** to see the diary first, with farm-local timestamps and links to detail views. Manual edits show the previous and saved dates when the date changed. Weather decisions distinguish a kept date from an executed reschedule. Pending suggestions remain under weekly review. **Notifications** shows due-soon and overdue task reminders for the farmer. Completed, cancelled and moved tasks stop showing outdated reminders.
+
+In a chilli cultivation, **Farm tasks → Ask Chilli AI about this planner** answers supported English questions about the next seven farm-local days, pending overdue tasks and the reason for a saved date suggestion. The answer shows the saved forecast and the suggestion’s current state. **Review date options** opens the same forecast-based review controls as the seven-day planner.
 
 ### Manual tasks
 
@@ -173,6 +175,12 @@ After M0, complete the early UM1 scope and its review/check gates. The later V0 
 The landing page includes a simple sage panel immediately above the footer, with “Need a hand with your farm records?” and two actions. Visit Help Centre opens `/help`; Contact Support opens `/support/new` for signed-in farmers and `/help#sign-in` for other visitors. Actions sit beside the text when space permits and stack on mobile. Existing header/footer Help links remain available.
 
 ## Knowledge Sources
+
+Source details display the full version ID alongside the checksum and metadata. Reference answers offer a keyboard-operable supporting passage disclosure with a retry path for temporary errors. The chilli pilot route shows the Anuradhapura scope and the release status returned by the API.
+
+**Ask Chilli AI about reviewed PDFs** opens a private conversation from a chilli cultivation. The farmer can reopen it from **Saved conversations**, inspect the cited page, or confirm deletion. The answer form makes the Gemini choice explicit and shows the local district and crop stage separately from the answer.
+
+**Published chilli references** shows the corpus version, source locator and English paraphrase for each passage. In the local PDF workflow, set a source title or start from **Upload replacement PDF** on a published version. The publish dialog identifies the effect on the previous version. On farmer answers, **Show supporting passage** expands the cited source note on demand.
 
 The signed-in **Chilli questions** screen starts with nursery site, irrigation and soil testing questions, followed by published study questions. It accepts typed variants. Practical answers show the relevant Department of Agriculture section and link to the public Sinhala crop page. Research answers show the study attribution, journal and PDF page, DOI and license. The selection label identifies Gemini only when the server verified its choice against the source summary. **Chilli farm guidance** opens the separate gated advice screen.
 

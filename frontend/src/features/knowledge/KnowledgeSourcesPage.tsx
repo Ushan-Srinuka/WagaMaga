@@ -7,6 +7,8 @@ import { farmWrite } from '../../lib/farms'
 import { useRecord, useSave } from '../farms/record-hooks'
 import KnowledgeAnswerPreview from './KnowledgeAnswerPreview'
 import KnowledgeSearch from './KnowledgeSearch'
+import PdfMetadataFields, { type PdfMetadata } from './PdfMetadataFields'
+import type { SourcePassage } from './ResearchPassage'
 
 const path = '/admin/knowledge/sources'
 const actions = {
@@ -20,12 +22,15 @@ const actions = {
 type Source = {
   id: string
   title: string
+  replaces_version_id?: string | null
+  rag_metadata?: PdfMetadata | null
   content: string
   checksum: string
   status: keyof typeof actions
   revision: number
   processing: 'queued' | 'ready' | 'failed' | 'deleted'
   processing_error: string | null
+  retryable?: boolean
 }
 type SourcePage = { items: Source[]; has_more: boolean }
 type PdfPage = { number: number; text: string }
@@ -47,9 +52,8 @@ const labels = {
   delete: 'Delete PDF',
 }
 const descriptions = {
-  review:
-    'Record that you reviewed the displayed version of this synthetic guide.',
-  publish: 'Publish this reviewed version within the demonstration.',
+  review: 'Record that you reviewed this version and its extracted text.',
+  publish: 'Publish this reviewed version in the source library.',
   withdraw: 'Change this version to Withdrawn and keep its review history.',
   discard:
     'Remove this unpublished PDF from Knowledge Sources. The stored original and decision history are retained.',
@@ -65,12 +69,36 @@ function saveError(error: unknown) {
   return 'The change could not be confirmed. Refresh the list before trying again.'
 }
 
-async function uploadPdf(file: File) {
+function readPdfMetadata(form: HTMLFormElement): PdfMetadata | undefined {
+  const fields = new FormData(form)
+  if (!fields.has('publisher')) return
+  return {
+    publisher: String(fields.get('publisher')),
+    language: String(fields.get('language')),
+    crop: String(fields.get('crop')),
+    region: String(fields.get('region')),
+    published_on: String(fields.get('published_on') ?? '') || null,
+    valid_until: String(fields.get('valid_until') ?? '') || null,
+    access: fields.get('access') === 'farmers' ? 'farmers' : 'admin',
+  }
+}
+
+async function uploadPdf(
+  file: File,
+  title: string,
+  replaces?: string,
+  metadata?: PdfMetadata,
+) {
   if (file.size > 6 * 1024 * 1024)
     throw new ApiError(413, 'Use a PDF no larger than 6 MiB.')
+  const params = new URLSearchParams()
+  if (title.trim()) params.set('title', title.trim())
+  if (replaces) params.set('replaces', replaces)
+  if (metadata) params.set('metadata', JSON.stringify(metadata))
+  const query = params.size ? `?${params}` : ''
   try {
     return await request<Source>(
-      `${path}/pdf`,
+      `${path}/pdf${query}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/pdf' },
@@ -114,9 +142,13 @@ export default function KnowledgeSourcesPage() {
     action: keyof typeof labels
   } | null>(null)
   const [file, setFile] = useState<File | null>(null)
+  const [title, setTitle] = useState('')
+  const [replacement, setReplacement] = useState<Source | null>(null)
+  const [metadataEnabled, setMetadataEnabled] = useState(false)
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [searchVersion, setSearchVersion] = useState(0)
   const sources = useRecord<SourcePage>(`${path}?page=${page}`)
+  const references = useRecord<SourcePassage[]>(`${path}/references`)
   const save = useSave(saveError)
   const action = selected?.action
 
@@ -131,11 +163,43 @@ export default function KnowledgeSourcesPage() {
     <>
       <div className="page-intro">
         <h1>Knowledge Sources</h1>
-        <p>Add a fictional guide or upload a synthetic PDF for review.</p>
+        <p>
+          Browse the published chilli references or manage PDF versions for
+          local review.
+        </p>
         <Link to="/admin/knowledge/evaluation">
           Review the 10 chilli questions
         </Link>
       </div>
+      <section className="panel" aria-label="Published chilli references">
+        <h2>Published chilli references</h2>
+        {references.loading && <p role="status">Loading reference passages…</p>}
+        {references.error !== undefined && (
+          <Notice message="The published references could not be loaded." />
+        )}
+        {references.data?.map(
+          ({ id, question, citation, source_note, corpus_version }) => (
+            <details key={id}>
+              <summary>{question}</summary>
+              <p>{source_note}</p>
+              <p>
+                <a href={citation.url} target="_blank" rel="noreferrer">
+                  {citation.title}
+                </a>
+                {' · '}
+                {citation.publisher}
+                {' · '}
+                {'section' in citation
+                  ? citation.section
+                  : `PDF page ${citation.pdf_page}`}
+              </p>
+              <small>
+                {corpus_version} · {id}
+              </small>
+            </details>
+          ),
+        )}
+      </section>
       <KnowledgeSearch sourcePath={path} key={`search-${searchVersion}`} />
       <KnowledgeAnswerPreview
         sourcePath={path}
@@ -185,17 +249,63 @@ export default function KnowledgeSourcesPage() {
             event.preventDefault()
             if (!file) return
             const form = event.currentTarget
+            const metadata = readPdfMetadata(form)
             void save.run(
-              () => uploadPdf(file),
+              () => uploadPdf(file, title, replacement?.id, metadata),
               () => {
                 form.reset()
                 setFile(null)
+                setTitle('')
+                setReplacement(null)
+                setMetadataEnabled(false)
                 setPage(1)
                 sources.reload()
               },
             )
           }}
         >
+          {replacement && (
+            <p role="status">
+              Replacing <strong>{replacement.title}</strong>. The current PDF
+              stays published until the replacement is reviewed and published.{' '}
+              <button
+                type="button"
+                disabled={save.busy}
+                onClick={() => {
+                  setReplacement(null)
+                  setTitle('')
+                  setMetadataEnabled(false)
+                }}
+              >
+                Cancel replacement
+              </button>
+            </p>
+          )}
+          <div className="field">
+            <label htmlFor="knowledge-title">Source title</label>
+            <input
+              id="knowledge-title"
+              value={title}
+              maxLength={120}
+              disabled={save.busy}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </div>
+          <label className="field">
+            <input
+              type="checkbox"
+              checked={metadataEnabled}
+              disabled={save.busy}
+              onChange={(event) => setMetadataEnabled(event.target.checked)}
+            />
+            Include in the reviewed PDF library
+          </label>
+          {metadataEnabled && (
+            <PdfMetadataFields
+              key={replacement?.id}
+              previous={replacement?.rag_metadata}
+            />
+          )}
           <div className="field">
             <label htmlFor="knowledge-pdf">Synthetic PDF</label>
             <input
@@ -225,7 +335,7 @@ export default function KnowledgeSourcesPage() {
           const next =
             source.processing === 'ready' ? actions[source.status] : null
           return (
-            <article className="panel" key={source.id}>
+            <article className="panel knowledge-source-version" key={source.id}>
               <h2>{source.title}</h2>
               <p>
                 Status: <strong>{source.status}</strong> · Version{' '}
@@ -273,6 +383,34 @@ export default function KnowledgeSourcesPage() {
               )}
               <details>
                 <summary>Version details</summary>
+                <p className="record-note">Source version · {source.id}</p>
+                {source.replaces_version_id && (
+                  <p>
+                    Replaces version {source.replaces_version_id.slice(0, 8)}
+                  </p>
+                )}
+                {source.rag_metadata && (
+                  <dl>
+                    <dt>Publisher</dt>
+                    <dd>{source.rag_metadata.publisher}</dd>
+                    <dt>Language</dt>
+                    <dd>{source.rag_metadata.language}</dd>
+                    <dt>Crop and region</dt>
+                    <dd>
+                      {source.rag_metadata.crop} · {source.rag_metadata.region}
+                    </dd>
+                    <dt>Publication date</dt>
+                    <dd>{source.rag_metadata.published_on ?? 'Unknown'}</dd>
+                    <dt>Valid until</dt>
+                    <dd>{source.rag_metadata.valid_until ?? 'Unspecified'}</dd>
+                    <dt>Library access</dt>
+                    <dd>
+                      {source.rag_metadata.access === 'farmers'
+                        ? 'Matching cultivations'
+                        : 'Administrators only'}
+                    </dd>
+                  </dl>
+                )}
                 <p style={{ overflowWrap: 'anywhere' }}>
                   SHA-256: {source.checksum}
                 </p>
@@ -284,6 +422,39 @@ export default function KnowledgeSourcesPage() {
                   onClick={() => setSelected({ source, action: next })}
                 >
                   {labels[next]}
+                </button>
+              )}
+              {source.retryable && (
+                <button
+                  type="button"
+                  disabled={save.busy || save.blocked}
+                  onClick={() =>
+                    void save.run(
+                      () =>
+                        farmWrite<Source>(
+                          `${path}/${source.id}/retry-pdf`,
+                          'POST',
+                          {},
+                        ),
+                      sources.reload,
+                    )
+                  }
+                >
+                  Retry PDF extraction
+                </button>
+              )}
+              {!source.content && source.status === 'published' && (
+                <button
+                  type="button"
+                  disabled={save.busy || save.blocked}
+                  onClick={() => {
+                    setReplacement(source)
+                    setTitle(source.title)
+                    setMetadataEnabled(Boolean(source.rag_metadata))
+                    document.getElementById('knowledge-title')?.focus()
+                  }}
+                >
+                  Upload replacement PDF
                 </button>
               )}
               {!source.content &&
@@ -325,7 +496,11 @@ export default function KnowledgeSourcesPage() {
         <ConfirmDialog
           eyebrow="Knowledge source"
           title={labels[action]}
-          description={descriptions[action]}
+          description={
+            action === 'publish' && selected.source.replaces_version_id
+              ? 'Publish this reviewed PDF and withdraw the previous version in the same operation.'
+              : descriptions[action]
+          }
           confirmLabel={labels[action]}
           busy={save.busy}
           error={save.error}

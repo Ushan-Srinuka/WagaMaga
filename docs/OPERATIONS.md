@@ -28,6 +28,10 @@ Revisions and linked review notices require `0023_plan_revision_notices`. Back u
 
 Task reminders require `0024_task_reminders` and the normal worker. The worker attempts up to 100 new reminders per minute. Eligibility uses the farm timezone and current task state. The inbox immediately filters stale reminders even if the worker is stopped.
 
+PDF replacements require `0025_knowledge_replacements` and the normal local extraction worker. Back up the existing knowledge version, PDF and decision tables together so the previous and replacement versions remain linked.
+
+Reviewed passage retrieval requires `0026_reviewed_pdf_rag`. Include `knowledge_passages` in the PostgreSQL backup. The worker indexes published, farmer-visible PDFs selected by exact checksum and retries embedding failures after a bounded delay. A replacement receives its own checksum and passage IDs. Removing a checksum disables semantic use of its existing vectors. Source withdrawal removes it from both scoring branches.
+
 Automatic weather review uses `0020_scheduled_weather` and the normal separate worker. Each eligible farm must opt in. The worker checks active farms only when a threshold and pending task fall in the next three forecast dates. It reuses a recent manual forecast, otherwise shares approximate coordinates, dates and timezone with Open-Meteo. Successful checks wait up to 90 minutes or forecast expiry. Provider failures retry after 15 minutes and retain the previous snapshot. Two-minute leases recover interrupted jobs. After opt-out, an in-flight provider request can finish while its result is discarded. Include schedules, notice claims and notifications in backups. For an isolated recovery exercise, keep the worker stopped until the restored environment and provider settings are verified.
 
 Cultivation guidance on `0021_guidance_observations` uses local rules and published source summaries. The location is farmer-reported. The optional soil moisture field is a farmer observation, ages out of guidance after 24 hours and stays in observation history. No farm context is sent to Gemini. The separate reviewed guidance pilot continues to use its existing release conditions.
@@ -49,6 +53,8 @@ React static build behind HTTPS; FastAPI API; separate worker/scheduler; Postgre
 PostgreSQL durable jobs are the initial design. FastAPI in-process BackgroundTasks is not the durable workflow store. Redis/Celery is optional future work only when justified by measured needs.
 
 ## Jobs and failure handling
+
+Run the normal worker on schema `0028_chilli_jobs` to drain Chilli AI questions. An interrupted lease can be reclaimed after 90 seconds. Three interrupted claims cause a visible failure. A farmer can explicitly retry a failed job using their active session. A late worker cannot commit a turn after takeover. An interrupted provider request can be repeated on recovery. Document extraction continues to use the durable pending row and PostgreSQL lock. In **Knowledge Sources**, use **Retry PDF extraction** for an eligible failed draft, up to three times.
 
 Workers claim jobs with bounded leases, perform bounded work and persist outcomes. Expired leases allow restart recovery. Use capped transient-error retries and backoff; invalid sources or unsafe proposals need review. Insert outbox events with business changes and deduplicate downstream effects. Provide authorized users with pending/failure status.
 
@@ -72,13 +78,23 @@ Record request latency, provider latency, bounded retries, queue age/failures, A
 
 Document the real rollback strategy before deploying. Reverting application code may not reverse a data migration; destructive schema changes need an explicit recovery plan.
 
+### Private Windows installation
+
+On the same computer as the browser, keep the API, frontend and PostgreSQL bound to `127.0.0.1`. Use the existing local `.env`, run `docker compose up -d --wait`, then apply migrations with `.\scripts\uv.ps1 run alembic upgrade head`. Run `.\scripts\uv.ps1 run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log` and `.\scripts\uv.ps1 run python -m app.worker` in separate processes. Build with `npm.cmd --prefix frontend run build` and serve it on this computer with `npm.cmd --prefix frontend run preview -- --port 5173 --strictPort`. Open `http://127.0.0.1:5173/farms` and check `http://127.0.0.1:5173/health/ready`.
+
+This configuration uses the loopback HTTP exception in NFR01. The isolated HTTPS smoke test uses a short-lived certificate explicitly trusted by its test client. A network installation needs a trusted certificate, production cookie settings, explicit allowed origins and a serving stack suited to that host. Check the PDF upload and processing restrictions before changing `APP_ENV`.
+
 ## Backup and restore
+
+Migration `0027_private_chilli_chats` stores private conversation rows and turns in PostgreSQL. User deletion removes the live rows. Older backups can still contain those rows until they expire under the selected retention policy. Keep backup access restricted and apply the deployment retention rules on restore. Plan decisions and audits use their existing independent storage.
 
 Back up both PostgreSQL and original document files, including enough versioned evidence to reconstruct decisions. Define access, encryption, schedule, retention and off-host storage with the chosen host.
 
 Before a real pilot, restore into an isolated environment and verify database constraints, files/checksums, citations, task history and decision evidence. Check worker restart behaviour without duplicating effects. Measure recovery time and data loss rather than assuming backups are usable.
 
-The [local restore drill](TESTING.md#chilli-questions-and-reliability) uses the synthetic test database in the Compose container. It restores into a temporary database and verifies pgvector, representative farm and task evidence, and application-role grants. The CI backend job runs the same drill. Production backup scheduling, document recovery and off-host retention require their own verification.
+The [local restore drill](TESTING.md#worker-recovery-document-restore-and-degraded-services) uses the synthetic test database in the Compose container. It restores into a temporary database and verifies pgvector, farm and task evidence, application-role grants, original PDF checksums, extracted pages and a saved citation. Current uploaded PDFs and extracted pages live in PostgreSQL, so this drill restores them with the database archive. The CI backend job uses the same procedure. Backup schedules, off-host retention and any future file or object storage require their own verification.
+
+For an on-demand copy of this computer's application database, run `.\scripts\database\backup_local.ps1` from the project root using PowerShell 7.4 or later while Compose PostgreSQL is healthy. It writes a private custom-format dump under the ignored `.data/backups` directory and prints its SHA-256 checksum. The archive includes account and private farm records and uploaded PDFs, so keep it in restricted storage. Record its checksum separately if you copy it. Run the synthetic restore drill independently to validate the procedure. An on-demand archive does not establish a scheduled recovery point.
 
 SRS pilot objectives: recovery point within 24 hours and recovery time within 4 hours. These are unmeasured targets, not service guarantees.
 
@@ -87,6 +103,6 @@ SRS pilot objectives: recovery point within 24 hours and recovery time within 4 
 Resolve hosting/budget, reporting contact, source rights, provider terms, agronomic review policy, privacy/retention/account deletion and usage quotas. Verify HTTPS, session/cookie protections, explicit origins, audit grants, backup restoration and release gates. A deployed demo with synthetic actors does not establish production readiness or actual advisor coverage.
 ## Synthetic PDF processing
 
-The public Chilli questions summaries are versioned with the API. The three Department of Agriculture summaries are served locally. With a Gemini key, the API can send the four fixed study summaries and a canonical study question, limited to six attempts per farmer per hour. Reference answers stay available if the provider is unavailable or its result fails validation. Farm guidance release and source withdrawal controls still apply to the separate uploaded PDF workflow.
+The public Chilli questions summaries are versioned with the API. Department of Agriculture summaries are served locally. With a Gemini key, the API can send the fixed study summaries and a canonical study question, limited to six attempts per farmer per hour. Reference answers stay available if the provider is unavailable or its result fails validation. Farm guidance release and source withdrawal controls still apply to the separate uploaded PDF workflow.
 
 Start the normal worker in development/test to process queued uploads. Use the Knowledge Sources list to check failures. Originals are stored in the private PostgreSQL relation and included in database backups. Restore tests should check both original checksums and numbered page text. The parser subprocess has a ten-second wall timeout and Linux CPU/address space limits. Windows uses the wall timeout. The demo requires selectable text and blocks production upload. Real-source rollout needs a separate upload screening and storage review.

@@ -99,6 +99,7 @@ def draft_reference(db, settings, case_id):
             SourceVersion.id == reference.version_id,
             SourceVersion.checksum == reference.checksum,
             SourceVersion.status == "draft",
+            SourceVersion.rag_metadata.is_(None),
             SourcePdf.state == "ready",
         )
     )

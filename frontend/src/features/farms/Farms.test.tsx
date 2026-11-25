@@ -82,6 +82,8 @@ function reads(path: string): unknown {
   if (route === '/farms/farm-one/cultivations') return page([cultivation])
   if (route === '/farms/farm-one/cultivations/cult-one') return cultivation
   if (route === '/farms/farm-one/cultivations/cult-one/tasks') return page([])
+  if (route === '/farms/farm-one/cultivations/cult-one/chilli-chats')
+    return page([])
   if (route === '/farms/farm-one/cultivations/cult-one/task-plans')
     return { plan: null }
   if (route === '/farms/farm-one/cultivations/cult-one/weather')

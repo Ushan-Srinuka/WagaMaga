@@ -6,6 +6,7 @@ from sqlalchemy import select, text
 
 from app.modules.identity.security import IdentityError
 from app.modules.identity.service import active_actor, require_admin
+from app.modules.knowledge import rag
 from app.modules.knowledge.models import SourceDecision, SourcePdf, SourceVersion
 
 DEMO_TITLE = "Chilli pilot demonstration guide"
@@ -45,9 +46,14 @@ def search_published_pages(db, ids, query, *, checksum=None, exclude_checksum=No
     return published_page_matches(db, query, checksum=checksum, exclude_checksum=exclude_checksum)
 
 
-def published_page_matches(db, query, *, checksum=None, exclude_checksum=None):
+def published_page_matches(db, query, *, checksum=None, exclude_checksum=None, legacy_only=False):
     return _page_matches(
-        db, query, "published", checksum=checksum, exclude_checksum=exclude_checksum
+        db,
+        query,
+        "published",
+        checksum=checksum,
+        exclude_checksum=exclude_checksum,
+        legacy_only=legacy_only,
     )
 
 
@@ -55,7 +61,9 @@ def draft_page_matches(db, version_id, query):
     return _page_matches(db, query, "draft", version_id=version_id)
 
 
-def _page_matches(db, query, status, *, version_id=None, checksum=None, exclude_checksum=None):
+def _page_matches(
+    db, query, status, *, version_id=None, checksum=None, exclude_checksum=None, legacy_only=False
+):
     statement = text("""
         WITH query AS (SELECT plainto_tsquery('simple', :query) AS terms),
         matches AS (
@@ -68,6 +76,7 @@ def _page_matches(db, query, status, *, version_id=None, checksum=None, exclude_
                 WITH ORDINALITY AS page(body, number)
             CROSS JOIN query
             WHERE source.status = :status AND pdf.state = 'ready'
+                AND (NOT :legacy_only OR source.rag_metadata IS NULL)
                 AND source.id = coalesce(CAST(:version_id AS uuid), source.id)
                 AND source.checksum = coalesce(CAST(:checksum AS text), source.checksum)
                 AND source.checksum IS DISTINCT FROM CAST(:exclude_checksum AS text)
@@ -88,6 +97,7 @@ def _page_matches(db, query, status, *, version_id=None, checksum=None, exclude_
         "version_id": version_id,
         "checksum": checksum,
         "exclude_checksum": exclude_checksum,
+        "legacy_only": legacy_only,
     }
     return db.execute(statement, params).mappings().all()
 
@@ -120,14 +130,49 @@ def add_demo(db, ids, request_id):
     return source
 
 
-def add_pdf(db, ids, original, request_id, *, title="Uploaded sample PDF"):
+def locked_source(db, version_id):
+    return db.scalar(
+        select(SourceVersion)
+        .where(SourceVersion.id == version_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+def add_pdf(db, ids, original, request_id, *, title=None, replaces=None, metadata=None):
     actor = admin_actor(db, ids, write=True)
     if not original.startswith(b"%PDF-"):
         raise IdentityError(422, "INVALID_PDF", "Choose a valid PDF file.")
+    checksum = sha256(original).hexdigest()
+    version_metadata = metadata.model_dump(mode="json") if metadata else None
+    if replaces is not None:
+        prior = locked_source(db, replaces)
+        if prior is None or prior.pdf is None or prior.status != "published":
+            raise IdentityError(409, "SOURCE_CONFLICT", "Choose a published PDF to replace.")
+        existing = db.scalar(
+            select(SourceVersion.id).where(
+                SourceVersion.replaces_version_id == prior.id,
+                SourceVersion.status.in_(("draft", "reviewed", "published")),
+            )
+        )
+        if version_metadata is None:
+            version_metadata = prior.rag_metadata
+        if existing is not None or (checksum, version_metadata) == (
+            prior.checksum,
+            prior.rag_metadata,
+        ):
+            raise IdentityError(
+                409,
+                "SOURCE_CONFLICT",
+                "Change the PDF or its metadata and check pending replacements.",
+            )
+        title = title or prior.title
     source = SourceVersion(
-        title=title,
+        title=title or "Uploaded sample PDF",
+        rag_metadata=version_metadata,
         content="",
-        checksum=sha256(original).hexdigest(),
+        checksum=checksum,
+        replaces_version_id=replaces,
         status="draft",
         revision=1,
         pdf=SourcePdf(original=original, state="queued"),
@@ -151,14 +196,24 @@ def source_pages(db, ids, version_id):
     ]
 
 
+def retry_pdf(db, ids, version_id):
+    admin_actor(db, ids, write=True)
+    source = locked_source(db, version_id)
+    if source is None or source.status in ("discarded", "deleted") or source.pdf is None:
+        raise IdentityError(404, "SOURCE_NOT_FOUND", "PDF source version not found.")
+    pdf = db.get(SourcePdf, source.id, with_for_update=True, populate_existing=True)
+    if not source.retryable:
+        raise IdentityError(409, "PDF_RETRY_CONFLICT", "This PDF cannot be retried.")
+    pdf.state = "queued"
+    pdf.error = None
+    pdf.retry_count += 1
+    db.flush()
+    return source
+
+
 def transition(db, ids, version_id, action, expected_revision, request_id):
     actor = admin_actor(db, ids, write=True)
-    source = db.scalar(
-        select(SourceVersion)
-        .where(SourceVersion.id == version_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    source = locked_source(db, version_id)
     if source is None or source.status == "discarded":
         raise IdentityError(404, "SOURCE_NOT_FOUND", "Source version not found.")
     if source.revision != expected_revision:
@@ -185,10 +240,22 @@ def transition(db, ids, version_id, action, expected_revision, request_id):
             raise IdentityError(
                 409, "SOURCE_CONFLICT", "Refresh and check the current source status."
             )
+    if action == "publish" and source.replaces_version_id is not None:
+        prior = locked_source(db, source.replaces_version_id)
+        if prior is None or prior.status != "published":
+            raise IdentityError(
+                409, "SOURCE_CONFLICT", "The previous version is no longer published."
+            )
+        prior.status = "withdrawn"
+        prior.revision += 1
+        record_decision(db, prior, actor.id, request_id)
     source.status = after
     source.revision += 1
+    if action == "publish":
+        rag.create_passages(db, source)
     if action == "delete":
         db.flush()
+        db.execute(text("DELETE FROM knowledge_passages WHERE version_id = :id"), {"id": source.id})
         source.pdf.original = None
         source.pdf.pages = None
         source.pdf.error = None

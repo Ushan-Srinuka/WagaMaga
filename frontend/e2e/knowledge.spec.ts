@@ -195,6 +195,26 @@ test('farmer reads a published chilli study answer and the cited page', async ({
   await expect(answer).toContainText('28 farmers')
   await expect(answer).toContainText('Tirappane')
   await expect(answer).toContainText('Journal page 32 · PDF page 3')
+  const supporting = answer.getByRole('button', {
+    name: 'Show supporting passage',
+  })
+  const sourceRoute = '**/api/v1/knowledge/chilli/research/sources/**'
+  await page.route(sourceRoute, (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  )
+  await supporting.focus()
+  await page.keyboard.press('Enter')
+  await expect(
+    answer.getByRole('button', { name: 'Hide supporting passage' }),
+  ).toHaveAttribute('aria-expanded', 'true')
+  await expect(answer.getByRole('alert')).toContainText(
+    'The supporting passage could not be loaded.',
+  )
+  await page.unroute(sourceRoute)
+  await answer.getByRole('button', { name: 'Retry supporting passage' }).click()
+  await expect(
+    answer.getByRole('region', { name: 'Supporting passage' }),
+  ).toContainText('Tirappane')
   await expect(
     answer.getByRole('link', { name: 'Read the published study' }),
   ).toHaveAttribute('href', 'https://doi.org/10.4038/ta.v173i1.128')
@@ -211,6 +231,11 @@ test('farmer reads a published chilli study answer and the cited page', async ({
       name: 'Read the Department of Agriculture source (Sinhala)',
     }),
   ).toHaveAttribute('href', 'https://doa.gov.lk/field-crops-chilli-si/')
+  await question.fill(
+    'Which factors affect the watering interval for field chillies?',
+  )
+  await find.click()
+  await expect(answer).toContainText('soil texture')
   await question.fill('How much fertilizer should I apply?')
   await find.click()
   await expect(page.getByText('No evidence found.')).toBeVisible()
@@ -228,6 +253,9 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
   ).toBeVisible()
   await page.getByRole('link', { name: 'Chilli farm guidance' }).click()
   await expect(
+    page.getByText('Scope · Chilli cultivations in Anuradhapura District.'),
+  ).toBeVisible()
+  await expect(
     page.getByText('Chilli answers are still being reviewed.'),
   ).toBeVisible()
   await expect(
@@ -235,6 +263,15 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
   ).toHaveCount(0)
 
   await page.getByRole('link', { name: 'Back to Chilli questions' }).click()
+  if (process.env.E2E_BUILT_FRONTEND === '1') {
+    await expect(
+      page.getByRole('heading', { name: 'Chilli questions' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'Try the local demo' }),
+    ).toHaveCount(0)
+    return
+  }
   await page.getByRole('link', { name: 'Try the local demo' }).click()
   await expect(
     page.getByRole('heading', { name: 'Chilli questions demo' }),
@@ -282,6 +319,17 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
 })
 
 test('farmer searches reviewed excerpts locally', async ({ page, request }) => {
+  if (process.env.E2E_BUILT_FRONTEND === '1') {
+    await openTestFarmer(page, request)
+    await page.goto('/knowledge/chilli')
+    await expect(
+      page.getByRole('heading', { name: 'Chilli questions' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'Search reviewed excerpts locally' }),
+    ).toHaveCount(0)
+    return
+  }
   page.setDefaultTimeout(10_000)
   page.setDefaultNavigationTimeout(12_000)
   const web = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
@@ -496,6 +544,8 @@ test('uploaded PDF shows page text after the worker runs', async ({
   page,
   context,
 }) => {
+  const narrow = page.viewportSize()?.width === 360
+  if (narrow) await page.setViewportSize({ width: 320, height: 760 })
   const document = await context.newPage()
   const keyword = `pilot${randomBytes(6).toString('hex')}`
   await document.setContent(
@@ -504,6 +554,11 @@ test('uploaded PDF shows page text after the worker runs', async ({
   const buffer = await document.pdf()
   await document.close()
   await openKnowledge(page)
+  await page.getByLabel('Include in the reviewed PDF library').check()
+  await page.getByLabel('Publisher').fill('Synthetic publisher')
+  await page
+    .getByLabel('Library access after publication')
+    .selectOption('farmers')
   await page.getByLabel('Synthetic PDF').setInputFiles({
     name: 'synthetic.pdf',
     mimeType: 'application/pdf',
@@ -518,11 +573,24 @@ test('uploaded PDF shows page text after the worker runs', async ({
   await page.getByRole('button', { name: 'Upload PDF', exact: true }).click()
   const response = await added
   expect(response.status()).toBe(201)
-  const { id } = await response.json()
+  const { id, rag_metadata } = await response.json()
+  expect(rag_metadata).toMatchObject({
+    publisher: 'Synthetic publisher',
+    crop: 'chilli',
+    region: 'anuradhapura',
+    access: 'farmers',
+  })
   const card = page
     .getByRole('article')
     .filter({ hasText: `Version ${id.slice(0, 8)}` })
   await expect(card.getByText(/Waiting for text extraction/)).toBeVisible()
+  await card.getByText('Version details', { exact: true }).click()
+  await expect(card.getByText(`Source version · ${id}`)).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => window.document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true)
   await expect(
     card.getByRole('button', { name: 'Mark as reviewed' }),
   ).toHaveCount(0)
@@ -565,14 +633,50 @@ test('uploaded PDF shows page text after the worker runs', async ({
   await keywords.fill('nonesuchkeyword')
   await search.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(search.getByRole('status')).toContainText('No evidence found')
-  await card.getByRole('button', { name: 'Withdraw', exact: true }).click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Withdraw', exact: true })
-    .click()
+  await card.getByRole('button', { name: 'Upload replacement PDF' }).click()
+  const revisedKeyword = `revision${randomBytes(12).toString('hex')}`
+  const revisedTitle = `Revised chilli reference ${revisedKeyword}`
+  await page.getByLabel('Source title').fill(revisedTitle)
+  await page.getByLabel('Synthetic PDF').setInputFiles({
+    name: 'replacement.pdf',
+    mimeType: 'application/pdf',
+    buffer: await reviewedExcerptsPdf([`Revised notes ${revisedKeyword}`]),
+  })
+  const replacementUpload = page.waitForResponse(
+    (item) =>
+      new URL(item.url()).pathname === '/api/v1/admin/knowledge/sources/pdf' &&
+      item.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Upload PDF', exact: true }).click()
+  const replacement = await replacementUpload
+  expect(replacement.status()).toBe(201)
+  expect((await replacement.json()).replaces_version_id).toBe(id)
+  await expect(card.getByText('published', { exact: true })).toBeVisible()
+  await processQueuedPdfs()
+  await page.getByRole('button', { name: 'Refresh sources' }).click()
+  const revised = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: revisedTitle, exact: true }),
+  })
+  for (const [label, status] of [
+    ['Mark as reviewed', 'reviewed'],
+    ['Publish', 'published'],
+  ]) {
+    await revised.getByRole('button', { name: label, exact: true }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: label, exact: true })
+      .click()
+    await expect(revised.getByText(status, { exact: true })).toBeVisible()
+  }
   await expect(card.getByText('withdrawn', { exact: true })).toBeVisible()
+  expect(
+    await page.evaluate(() => window.document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(page.viewportSize()!.width)
   await keywords.fill(keyword)
   await search.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(search.getByRole('status')).toContainText('No evidence found')
   await expect(matchingPage).toHaveCount(0)
+  await keywords.fill(revisedKeyword)
+  await search.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(search.getByRole('article')).toContainText(revisedTitle)
 })

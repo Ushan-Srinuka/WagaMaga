@@ -1,5 +1,149 @@
 # Testing strategy
 
+## V1 release verification · 25 November 2026
+
+The selected installation is the Windows development computer. Local checks used Python 3.14.10, Node 24.13.0, PostgreSQL 18 with pgvector 0.8.7 and schema `0028_chilli_jobs`. Browser tests use Edge at 1280 and 360 pixels against the built frontend, synthetic test accounts and a deterministic weather provider. The installed frontend bundle is `index-dLpbGq4H.js`. The private application runs on loopback. The separate HTTPS smoke used a short-lived loopback certificate and the production API settings against a disposable database. It verified the built farm route, authentication and secure refresh cookies, origin denial, farm creation and reading, and worker database readiness.
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-v1-release'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" --tb=short -q
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" -s tests/benchmark_v1.py
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py::test_weather_reschedule_uses_exact_plan_and_commits_once
+Get-Content -Raw scripts/database/verify_test_restore.sh | docker compose exec -T db sh -s
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+$env:E2E_BUILT_FRONTEND='1'
+npm.cmd --prefix frontend run test:e2e
+```
+
+All 345 backend tests and all 79 frontend tests passed, along with lint, formatting, Alembic drift and the production build. The complete built Edge suite passed 30 desktop and 30 mobile journeys across farmer, advisor and administrator workflows. It skipped two opt-in live Gemini browser cases. The production rerun verifies that development-only demo controls are absent and includes opening the PDF version card and publishing a long-titled replacement at 320 px. Local development demo controls were exercised separately.
+
+The benchmark launches ten concurrent signed-in synthetic farmers over the FastAPI ASGI test client and live PostgreSQL. It times farm creation, reading and editing after authentication, excluding TLS, file transfers and AI. Parallel integration/browser runs must use different `_test` databases. The restore seed must run immediately before the synthetic restore script when sharing a test database.
+
+| Local CRUD sample | Requests | p50 | p95 |
+| --- | ---: | ---: | ---: |
+| Combined | 300 | 235.2 ms | 382.8 ms |
+| Create | 100 | 262.5 ms | 734.6 ms |
+| Read | 100 | 187.7 ms | 269.0 ms |
+| Edit | 100 | 243.8 ms | 314.5 ms |
+
+There were 100 synthetic farms and zero indexed passages in this sample. The HTTP paths and PostgreSQL transactions were measured with ten users. The full-corpus load case remains open.
+
+The live AI sample ran eight separate chat jobs on the fictional corpus with the configured Gemini embedding and quote endpoints. Timing began at job submission and ended after reading status and history. The test triggered the worker immediately and excluded browser polling and idle-worker wait. p50 was 3.53 s and p95 was 4.93 s across all eight terminal outcomes. Four returned correct citations, two correctly abstained, and two answerable questions ended with retryable `AI_UNAVAILABLE`. These values include failures and describe a small local sample. To reproduce the opt-in provider sample, set `WAGAMAGA_RAG_LIVE_EVAL=1` for `tests/integration/test_farm_api.py::test_evaluate_pdf_chat_32_cases` with a configured Gemini key and available quota. Only fictional fixture passages and questions are sent.
+
+The deterministic AI failure test injects a socket timeout at the Gemini adapter, verifies a retryable failed job with no saved chat turn, then verifies that lease recovery writes one turn. The separate PDF worker test terminates a process mid-extraction. Weather provider interruption uses the deterministic outage path.
+
+The private on-demand app backup restored in 2.6 seconds after copying the archive into the database container. The isolated restore confirmed the schema, pgvector, stored PDF checksums and saved passage references. The synthetic restore took 1.6 seconds and compared farm and task history, decision evidence, permissions, document checksums, extracted pages, and the exact legacy citation and reviewed passage records. These timings cover small local snapshots. A periodic backup schedule and recovery-point commitment remain to be verified.
+
+### V1 acceptance scenarios
+
+| ID | Local evidence and status |
+| --- | --- |
+| AT01 | Farm, cultivation and observation creation and archived history passed. Archived parents block writes and new task execution. |
+| AT02 | Cross-owner records, source reachability, chats and job state passed their denial checks, including unassigned and revoked advisors. |
+| AT03 | PDF parsing failure and review gating passed. Only eligible published versions are retrieved, and withdrawal invalidates the evidence. |
+| AT04 | Partial. The [32-question fictional evaluation](../evaluation/reports/chilli-reviewed-pdf-2026-11-24.md) measured keyword 20/24, vector 24/24 and hybrid 24/24 Recall@5 with live embeddings. Approved real-corpus evaluation, outdated/conflicting applicability review and independent material-claim review remain open. |
+| AT05 | No-evidence and forged-quotation checks passed. A reviewed PDF containing a synthetic instruction is also tested for abstention without a Gemini quotation call. |
+| AT06 | Weekly selection and atomic execution passed. Tests check exact accepted actions, task history and decision records. |
+| AT07 | Required advisor clearance cannot be skipped, and advisor clearance alone cannot change a task. |
+| AT08 | Fresh clearance and acceptance after revision, and rejection of stale task or forecast evidence, passed. |
+| AT09 | PostgreSQL concurrency, identical replays and injected transaction failure passed. Tests verify single execution or full rollback. |
+| AT10 | Deterministic stale and unavailable forecast, notice replay and closed-task suppression passed. |
+| AT11 | Private conversation deletion passed. Independent planner decisions survive deletion. |
+| AT12 | Partial. Local mobile, HTTPS, latency, simulated failure, worker recovery and restore were exercised. Two of eight live AI jobs ended unavailable. Full-corpus load, scheduled recovery-point evidence and CI on this candidate remain open. |
+
+V1 sign-off remains open while the real-source answer-quality and final delivery criteria are outstanding. Simulated farmer and advisor accounts are used for release verification. The farmer advisory pilot remains disabled.
+
+## V1 diary, review screens and accessibility
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-v1-part4'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'diary or weekly or weather_reschedule or advisor'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts knowledge.spec.ts --grep 'manages manual tasks|sets a weather alert|revises an advisor suggestion|completes the daily workflow|plan review shows loading|reads a published chilli study|sees the pending chilli pilot|uploaded PDF shows'
+```
+
+These checks exercise the timeline, review loading and retry states, lost assignment access, source disclosures, and the pending pilot. The targeted accessibility checks cover named controls, keyboard activation, visible focus, Escape and focus restoration, sampled text contrast, and 320 px layouts for the cultivation and administrator source workflows. They use synthetic accounts and browser accessibility semantics. Manual assistive-technology testing and a site-wide conformance audit are separate.
+
+## V1 workflow reliability
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-v1-part3'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py tests/integration/test_knowledge_demo.py -k 'weekly or schedule or reminder or threshold or durable_chilli or pdf_chat or reviewed_pdf_search or retry or worker_process'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (accepts selected tasks|completes the daily workflow|revises an advisor suggestion|fetches a farm forecast)'
+```
+
+The PostgreSQL coverage includes cross-owner and role denial for AI job status and retry, expired-lease takeover, duplicate suppression, provider failure and retry, PDF worker death and transient requeue, and all-or-nothing acceptance of a task addition and a date change. It also checks threshold validation, stale forecast handling, refresh outage, weather notice deduplication and closed task suppression. Weather thresholds are owner-reviewed settings. These tests use synthetic records and controlled provider failures.
+
+## Reviewed PDF chat and evaluation
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-pdf-chat'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'pdf_chat or reviewed_pdf_search' -s
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer completes the daily workflow'
+```
+
+The opt-in live evaluation uses six fictional PDFs and 32 questions. Set `WAGAMAGA_RAG_LIVE_EVAL=1` and run only `tests/integration/test_farm_api.py::test_evaluate_pdf_chat_32_cases` with a configured Gemini key. It measures keyword, live-vector, and hybrid retrieval and samples live answer selection on eight questions. See the [results](../evaluation/reports/chilli-reviewed-pdf-2026-11-24.md).
+
+## Reviewed PDF retrieval
+
+```powershell
+.\scripts\uv.ps1 run pytest --require-database tests/integration/test_farm_api.py -k reviewed_pdf_search
+npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts farms.spec.ts --grep 'uploaded PDF shows|farmer completes the daily workflow'
+```
+
+The PostgreSQL test uses synthetic PDFs and deterministic embeddings to exercise stable page citations, publication, keyword and hybrid lookup, cross-owner denial, scope and expiry filters, withdrawal, and deletion. A separate live Gemini smoke check returned 768-dimensional document and query vectors for two fictional strings. Measure PDF retrieval and answer quality on a labelled corpus separately.
+
+## Local startup and daily workflow
+
+On 24 November 2026 the API, frontend and worker restarted locally. The direct API and Vite proxy reported ready on `0025_knowledge_replacements`. The application role could query the PDF storage columns, and a processed document was present. Active farmer and administrator accounts existed. The walkthrough signed in as a synthetic farmer and verified the Account page, recorded soil moisture, fetched a fixture forecast, scheduled a task, asked the planner what was due, inspected the diary and asked a cited chilli question. It passed on desktop and mobile.
+
+```powershell
+.\scripts\uv.ps1 run python -m app.worker --once
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer completes the daily workflow'
+```
+
+Use the isolated Edge settings in [DEVELOPMENT.md](DEVELOPMENT.md) alongside the running local app. A separate keyless Open-Meteo request returned three days using sample coordinates. Gemini was configured locally and the walkthrough used the local answer path. The personal account password and any remote hosting were outside this check.
+
+## Worker recovery, document restore and degraded services
+
+Run against the dedicated PostgreSQL/pgvector test database. Run the restore seed and dump consecutively, before browser tests or any other test can replace the fixtures.
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-reliability-v1'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_knowledge_demo.py::test_pdf_queue_recovers_after_worker_process_dies tests/integration/test_farm_api.py::test_live_weather_saves_rounded_owned_forecast_and_reuses_it tests/integration/test_farm_api.py::test_scheduled_weather_recovers_an_expired_claim tests/integration/test_farm_api.py::test_task_reminders_deduplicate_and_disappear_when_tasks_change tests/integration/test_chilli_research.py::test_gemini_only_receives_canonical_research_and_exact_selection_is_verified tests/integration/test_farm_api.py::test_weather_reschedule_uses_exact_plan_and_commits_once
+Get-Content -Raw scripts/database/verify_test_restore.sh | docker compose exec -T db sh -s
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts knowledge.spec.ts support.spec.ts --grep 'fetches a farm forecast|private record links|session revocation clears|support foreign links|reads a published chilli study|uploaded PDF shows'
+```
+
+The PDF test pauses a real worker after it locks a queued PDF, kills that process and starts a fresh worker. It verifies the PDF was queued after the crash and produces one ready result after restart. The weather test abandons a committed lease and advances a controlled clock to verify recovery and suppression of a late duplicate result. The restore drill compares the source and isolated restored databases, including the original synthetic PDF bytes, extracted pages and review history. It also resolves the saved excerpt to its extracted page using the application database role. Weather and Gemini outage tests use controlled failures. The browser weather case checks that the saved forecast and manual task actions continue to work after a simulated 503.
+
+## Chilli reference library and evaluation
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-chilli-v1'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" -q -s tests/integration/test_chilli_research.py tests/integration/test_knowledge_demo.py tests/integration/test_knowledge_answers.py tests/integration/test_knowledge_evaluation.py
+npm.cmd --prefix frontend run test:e2e -- knowledge.spec.ts farms.spec.ts --grep 'published chilli study|uploaded PDF shows|farmer completes the daily workflow'
+```
+
+See the [32-question evaluation report](../evaluation/reports/chilli-anuradhapura-v1-2026-11-24.md) for retrieval hits and abstentions. The PDF replacement scenario uses synthetic PDFs and checks that the previous version stays searchable until the processed replacement is published.
+
+## Chilli planner chat
+
+From the repository root, run:
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-cache-planner-chat'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'planner_chat or weekly_'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer revises an advisor suggestion'
+```
+
+The PostgreSQL tests exercise farm-local task windows, missing and stale suggestions, and owner-only access. The browser journey tests opening date review from chat, reading the saved forecast reason, and completing the advisor and farmer workflow.
+
 ## Cultivation diary and task reminders
 
 From the repository root, run the focused PostgreSQL and browser checks:

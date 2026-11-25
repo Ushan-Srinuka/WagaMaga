@@ -4,7 +4,7 @@ Signed-in farmers can open **Chilli questions** for answers from published Sri L
 
 ## Published chilli research
 
-The `chilli-research-v2` reference set answers seven English questions. Study summaries cite the authors, publisher, DOI, journal and PDF page, and CC BY 4.0 license. Practical answers summarize general guidance in English and link to the relevant section of the public Sinhala crop page.
+The `chilli-research-v3` reference set contains ten versioned English passages. Study summaries cite the authors, publisher, DOI, journal and PDF page, and CC BY 4.0 license. Practical answers summarize general guidance in English and link to the relevant section of the public Sinhala crop page. Choose **Show supporting passage** on an answer to see the English paraphrase.
 
 | Question | Reviewed source location |
 | --- | --- |
@@ -15,8 +15,11 @@ The `chilli-research-v2` reference set answers seven English questions. Study su
 | What did the dry zone chilli field study measure? | [Darshana et al.](https://doi.org/10.4038/ta.v173i1.128), abstract, journal page 30, PDF page 1. |
 | How was chilli grown in the Rajarata study? | [Devasinghe and Wickramasinghe](https://doi.org/10.4038/sljae.v7i1.156), abstract, journal page 21, PDF page 1. |
 | Did the Rajarata chilli study find a clear yield difference? | [Devasinghe and Wickramasinghe](https://doi.org/10.4038/sljae.v7i1.156), abstract, journal page 21, PDF page 1. |
+| What soil characteristics suit field chilli? | [Department of Agriculture](https://doa.gov.lk/field-crops-chilli-si/), soil. |
+| What does the chilli guide say about field drainage before transplanting? | [Department of Agriculture](https://doa.gov.lk/field-crops-chilli-si/), field preparation and planting. |
+| What growing-media measurements did the Rajarata polytunnel study take? | [Devasinghe and Wickramasinghe](https://reference-global.com/article/10.4038/sljae.v7i1.156?tab=abstract), abstract, journal page 21, PDF page 1. |
 
-Farmer wording is matched locally to these questions or a small set of paraphrases. Unmatched questions return **No evidence found**, including requests for a treatment, a fertilizer amount or a field recommendation. The new summaries cover sunlight and crop history, soil moisture and texture, and soil tests before deciding on basal phosphorus and potassium. Requests for plot-specific irrigation dates or amounts need local evidence. With a configured Gemini key, the server can ask Gemini to select an exact maintained summary from the four study entries. The provider receives the canonical study question and those four summaries. The server checks the result and otherwise displays the directly matched summary. The three Department of Agriculture summaries are always served locally.
+Exact questions and maintained aliases are resolved locally. For other wording, PostgreSQL full-text ranking combines with pgvector cosine similarity over a small hand-curated concept vocabulary. The fallback requires one unambiguous eligible concept and abstains on out-of-scope requests. Farm-specific requests for fertilizer quantities, irrigation dates or treatment choices require separate evidence. If Gemini is configured, the optional study selector receives only the canonical study question and maintained study summaries. The server verifies the exact selection and falls back to the local result. Department of Agriculture summaries are served locally.
 
 The study summaries were checked against the cited PDF pages. The three practical summaries were checked against the linked sections of the public Sinhala crop page. The ten-case guidance workflow checks site-specific applicability independently.
 
@@ -28,6 +31,8 @@ The study summaries were checked against the cited PDF pages. The three practica
 The sample is built into WagaMaga, so the portfolio walkthrough needs no publisher outreach or external agricultural review.
 
 The admin **Knowledge Sources** page at `/admin/knowledge` also demonstrates synthetic PDF upload, review, publication and withdrawal. The worker extracts selectable text by PDF page number. Each publication decision records the admin, request and time against an immutable version.
+
+The same page lists the public reference passages used by Chilli questions. For a local PDF, enter a source title, upload, review its extracted text and publish. Choose **Upload replacement PDF** on a published PDF to queue an updated version. Publishing the reviewed replacement withdraws the previous version atomically. Check old extracted pages under the withdrawn version. An uploaded PDF enters the existing reviewed-excerpt workflow independently of the public reference set.
 
 ## Initial knowledge scope
 
@@ -76,6 +81,8 @@ Verify that every citation resolves to a permitted passage. Have a human assess 
 An LLM judge may assist triage, but cannot replace the required human review. Schema/citation validity does not prove agricultural correctness. Do not fabricate expert review or validated thresholds for demonstration data.
 
 ## Runs and reports
+
+The [32-question local report](../evaluation/reports/chilli-anuradhapura-v1-2026-11-24.md) records the current retrieval and answer checks for the public reference set.
 
 Keep datasets in `evaluation/datasets/` and reports in `evaluation/reports/` when created. Record date, commit, corpus/document versions, embedding/index version, model/provider, prompt version, retrieval settings, timeouts, usage/cost, metrics, human findings and unresolved failures.
 

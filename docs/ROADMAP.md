@@ -62,7 +62,7 @@ Farms, cultivation, knowledge, AI, proposals, weather and case sharing stay outs
 
 ## M1: V0 evidence proof
 
-Signed-in farmers can read [cited chilli answers](KNOWLEDGE_EVALUATION.md#published-chilli-research) for a bounded set of English questions. The reference set includes nursery site, irrigation and soil testing summaries from the Department of Agriculture and answers about two published studies. Farm-specific advice still uses the separate release gate. The [local walkthrough](KNOWLEDGE_EVALUATION.md#portfolio-demo) remains available for the fictional PDF workflow. [Reliability checks](TESTING.md#chilli-questions-and-reliability) cover degraded providers, farm permissions and a synthetic database restore.
+Signed-in farmers can read [cited chilli answers](KNOWLEDGE_EVALUATION.md#published-chilli-research) for bounded English questions. The reference set contains ten versioned passages from the Department of Agriculture and two published studies. The [32-question local evaluation](../evaluation/reports/chilli-anuradhapura-v1-2026-11-24.md) covers retrieval, cited answers and abstentions. The local source library supports publishing a reviewed replacement and withdrawing the previous version atomically. Farm-specific advice still uses the separate release gate. [Reliability checks](TESTING.md#chilli-questions-and-reliability) cover degraded providers, farm permissions and a synthetic database restore.
 
 Farm Records checkpoint, 18 November 2026: [FARM_RECORDS.md](FARM_RECORDS.md) defines FR-A requirements. FR-B provides schema `0005_farm_records`; FR-C provides owner-only APIs and atomic private history/audit. The authorized FR-D now connects My Farms, farm/cultivation details, observations, stage confirmation, archives and history to those APIs using the existing theme/session. Local component and real backend desktop/mobile journeys pass, including stale writes, foreign-record denial and revoked sessions. No migration/dependency, task, AI or weather flow was added. Next is FR-E review/publication and remote CI under the requested Git workflow; remote CI remains pending. This brings bounded manual records forward from M2 without completing M1/V0, M2 or full AT01/AT02. Preserve the identifiers and evidence-proof gates below; TESTING.md records actual results.
 
@@ -92,19 +92,27 @@ Complete all FR01-FR36 and DR requirements, with NFR baseline verification. Sugg
 
 Some safety and persistence capabilities begin in V0 and expand here. Stable jobs, basic retries and duplicate-safe effects cannot all be deferred to V2. Automated weather polling is a V2 expansion; V1 can use manual live review.
 
+The local reviewed-PDF retrieval slice provides source metadata, page-bound passages, Gemini embeddings stored in pgvector, and cultivation-scoped keyword and hybrid search. Private chilli PDF chat uses verified quotations with page citations. A 32-question fictional PDF evaluation compared keyword, live-vector and hybrid retrieval, with eight live answer spot checks. Real-corpus evaluation and independent agricultural review remain open.
+
 Exit criteria: AT01-AT12 evidence; at least 30 labelled evaluation questions; Recall@5 >= 0.80 on answerable cases; target >= 90% supported material claims; no unsupported actionable treatment recommendation. Verify latency, timeout, security, usability and recovery requirements in a declared environment. Simulated advisor accounts are labelled.
 
+The release-check target is a private installation on the Windows computer. Track the current evidence and open sign-off criteria in the [V1 acceptance scenarios](TESTING.md#v1-acceptance-scenarios).
+
 ## Planner follow-ups
+
+Weekly batch acceptance can combine the fixed recordkeeping task addition and ready forecast date changes in one transaction. Chilli questions now use a durable owner-scoped queue in the cultivation UI, and transient PDF failures can be retried by administrators.
 
 The cultivation planner shows seven farm-local days and overdue pending work. The first weekly suggestion under FR21–FR29 compares one pending task date with a later date based on the owner's rainfall threshold and current forecast. An unconfirmed stage or referral requires assigned advisor clearance. Clearance and farmer acceptance are recorded separately against the same immutable suggestion. The broader [planner direction](UI_DESIGN.md#planned-farmer-experience-planner-supported-by-chat) still includes chat-assisted planning and broader evidence.
 
 Returned suggestions can now be revised and reassigned to the same advisor with fresh clearance and farmer acceptance. In-app notices link to the specific suggestion, and cultivation history shows both versions. The combined weekly review accepts a chosen set of ready date changes atomically while preserving each plan's individual evidence and receipt.
 
+Chilli planner chat answers supported English schedule questions using the owner’s saved tasks and forecast-based suggestions. The chat links to existing review controls for date changes and requires no AI provider.
+
 Manual cultivation tasks are implemented locally under FR10 and FR30. The suggested plan demo covers one fixed recordkeeping addition under FR21–FR24 and FR26–FR29. FR32 includes labelled sample rain and live Open-Meteo forecasts. The weather review slice includes owner-set precipitation thresholds, opt-in forecast checks, private inbox notices, persistent alerts in cultivation, and a confirmed date change with an immutable action, weather evidence and atomic task history. Agronomic thresholds and advisor clearance remain future work.
 
 ### Combined cultivation diary
 
-Cultivation history now opens with an owner-only, paginated diary of observations, task completion and cancellation, and executed plan changes. Observation entries link to their version history. Task and plan evidence remains available below the diary. Pending and declined proposals do not appear as executed activities.
+Cultivation history now opens with an owner-only, paginated diary of observations, manual task changes, weather decisions, and executed plans. Accepted plan effects appear once. Kept dates and declined plans are labelled decisions, and pending suggestions remain separate. Entries link to observation history, task or plan history, or a weekly review.
 
 The worker now adds private reminders for pending tasks due today or tomorrow and for overdue tasks, based on the farm timezone. Closing or rescheduling a task suppresses any outdated reminder in the inbox.
 
@@ -113,6 +121,8 @@ The worker now adds private reminders for pending tasks due today or tomorrow an
 The owner can start **I missed this task** on an overdue pending task, choose a date within seven days and optionally explain the delay. The review compares dates and shows saved forecast evidence if it covers the proposed date. The exact decision is recorded in cultivation history. An accepted review updates one task date and adds its task revision atomically. The farmer chooses the date for this manual workflow. Agronomic recommendations and advisor clearance for referred proposals remain a later workflow.
 
 ## M3: V2 reliability
+
+Local reliability checks cover a killed PDF worker, an expired forecast lease, an isolated PostgreSQL and uploaded-PDF restore, and desktop/mobile privacy and simulated provider outage paths. See [the recovery checks](TESTING.md#worker-recovery-document-restore-and-degraded-services).
 
 Automated weather polling, broader evidence, expanded recovery tests and monitoring. Introduce Redis/Celery or more advanced vector indexing only when measurements justify a recorded architecture change.
 

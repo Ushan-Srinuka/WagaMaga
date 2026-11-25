@@ -1,6 +1,6 @@
 # Development guide
 
-Status: M0, UM1 accounts, Farm Records, weekly planning and assigned advisor review, live farm forecasts, automatic weather notices, date reviews, website support and the chilli knowledge workflows are implemented locally. Current schema is `0023_plan_revision_notices`. TESTING.md records actual outcomes.
+Status: M0, UM1 accounts, Farm Records, weekly planning and assigned advisor review, live farm forecasts, automatic weather notices, date reviews, website support and the chilli knowledge workflows are implemented locally. Current schema is `0028_chilli_jobs`. TESTING.md records actual outcomes.
 
 Sign in as a farmer and open **Chilli questions** to read cited answers about nursery setup, irrigation, soil testing and two published studies. The public crop-page answers run locally. The existing `GEMINI_API_KEY` enables optional selection from the four published study summaries, with a local fallback. Use the [local walkthrough](KNOWLEDGE_EVALUATION.md#portfolio-demo) to exercise the separate fictional PDF workflow.
 
@@ -39,6 +39,14 @@ The portfolio walkthrough uses the defaults `GEMINI_APPROVED_PDF_CHECKSUMS=[]` a
 For a farm guidance pilot, set `GEMINI_APPROVED_PDF_CHECKSUMS` in the server `.env` to a JSON list of eligible SHA-256 fingerprints and restart the API. Review and label the cases, then score them at `/admin/knowledge/scoring`. After all current cases pass, `FARMER_ADVISORY_ENABLED=true` and an API restart enable the fixed questions at `/knowledge/chilli/guidance`.
 
 ## Local setup: foundation and user management
+
+Open a chilli cultivation and choose **Ask Chilli AI about reviewed PDFs → New chilli chat**. The server uses the cultivation scope to find eligible citations. The answer toggle sends the current question, an eligible recent follow-up question, and selected reviewed excerpts to Gemini. For this feature use the existing `GEMINI_API_KEY` and exact source checksums in `GEMINI_APPROVED_PDF_CHECKSUMS`. Configure `RAG_EMBEDDING_PDF_CHECKSUMS` separately to enable semantic matching. Users can reopen and delete saved conversations from the same cultivation.
+
+To use reviewed PDF retrieval, apply the current migration. In **Knowledge Sources**, choose **Include in the reviewed PDF library**, enter the source metadata, and select the intended reader access. Upload, review and publish the extracted PDF. In a matching cultivation, open **Search reviewed PDF passages** and search by keyword.
+
+For hybrid retrieval, configure the existing `GEMINI_API_KEY` and add the exact published PDF checksum to `RAG_EMBEDDING_PDF_CHECKSUMS` in the ignored root `.env`. Restart the API and worker. The worker generates vectors for bounded batches of eligible published passages. Search runs locally by default. Enable the semantic checkbox for a search to send that search text to Gemini. A missing or unavailable embedding service leaves keyword search usable.
+
+For the chilli reference library, run the usual migration command and restart the API and worker. As an administrator, open **Knowledge Sources** to browse the public reference passages and manage local PDF replacements. As a farmer, open **Chilli questions** and select **Show supporting passage** on a sourced answer.
 
 From the project root, using PowerShell:
 
@@ -141,6 +149,15 @@ npm.cmd --prefix frontend run test:e2e
 ```
 
 The harness still refuses non-`_test` databases, creates synthetic accounts, binds to loopback and permits its selected web origin only. Do not run database migration/reset tests concurrently. Port defaults remain 8000/5173; remove these environment overrides before ordinary dev commands in that terminal. Existing app processes and the previously running Compose database are left alone.
+
+To exercise the same built frontend as GitHub CI, build first and set `E2E_BUILT_FRONTEND=1` in the browser-test terminal. The development-only journeys check that their controls are absent from the build. Clear the flag to exercise those controls on the development server.
+
+```powershell
+npm.cmd --prefix frontend run build
+$env:E2E_BUILT_FRONTEND='1'
+npm.cmd --prefix frontend run test:e2e
+Remove-Item Env:E2E_BUILT_FRONTEND
+```
 
 ## Help and support - 19 November 2026
 

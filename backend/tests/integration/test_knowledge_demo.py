@@ -1,7 +1,10 @@
 """Verify the demo lifecycle and evidence storage on PostgreSQL."""
 
+import subprocess
+import sys
 from hashlib import sha256
 from io import BytesIO
+from time import monotonic, sleep
 from uuid import uuid4
 
 import pytest
@@ -10,6 +13,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 
+from app.modules.knowledge import processing
 from app.modules.knowledge.pdf_text import MAX_BYTES
 from app.modules.knowledge.processing import process_one
 
@@ -83,9 +87,9 @@ def test_demo_rejects_non_administrators(account_client, who, status):
     )
 
 
-def sample_pdf(*, blank=False):
+def sample_pdf(labels=("Synthetic nursery notes", "Synthetic field notes"), *, blank=False):
     writer = PdfWriter()
-    for label in ("Synthetic nursery notes", "Synthetic field notes"):
+    for label in labels:
         page = writer.add_blank_page(width=300, height=300)
         if blank:
             continue
@@ -175,6 +179,162 @@ def test_pdf_upload_requires_processing_then_review(account_client, accounts):
     assert search("!!!") == []
     assert change("withdraw", 3).json()["status"] == "withdrawn"
     assert search() == []
+
+
+def test_publishing_pdf_replacement_switches_searchable_versions_atomically(
+    account_client, accounts
+):
+    admin = login(account_client, "admin")
+    farmer = login(account_client, "farmer")
+    pdf_headers = admin | {"Content-Type": "application/pdf"}
+
+    def upload(labels, params, headers=pdf_headers):
+        return account_client.post(
+            PATH + "/pdf", headers=headers, params=params, content=sample_pdf(labels)
+        )
+
+    def change(source, action, revision):
+        return account_client.post(
+            f"{PATH}/{source['id']}/{action}",
+            headers=admin,
+            json={"expected_revision": revision},
+        )
+
+    def search():
+        result = account_client.get(PATH + "/search", headers=admin, params={"q": "nursery"})
+        assert result.status_code == 200
+        return [item["version_id"] for item in result.json()]
+
+    original = upload(("Old nursery notes",), {"title": "Chilli reference"}).json()
+    assert process_one(accounts[1])
+    assert change(original, "review", 1).status_code == 200
+    assert change(original, "publish", 2).status_code == 200
+    params = {"replaces": original["id"]}
+    farmer_pdf = farmer | {"Content-Type": "application/pdf"}
+    assert upload(("New nursery notes",), params, farmer_pdf).status_code == 403
+    assert upload(("Old nursery notes",), params).status_code == 409
+    draft = upload(("New nursery notes",), params)
+    assert draft.status_code == 201
+    replacement = draft.json()
+    assert replacement["title"] == "Chilli reference"
+    assert replacement["replaces_version_id"] == original["id"]
+    assert upload(("Third nursery notes",), params).status_code == 409
+    assert change(replacement, "review", 1).status_code == 409
+    assert search() == [original["id"]]
+    assert process_one(accounts[1])
+    assert change(replacement, "review", 1).status_code == 200
+    assert search() == [original["id"]]
+    assert change(replacement, "publish", 2).status_code == 200
+    assert search() == [replacement["id"]]
+    sources = account_client.get(PATH, headers=admin).json()["items"]
+    assert {source["id"]: source["status"] for source in sources} == {
+        original["id"]: "withdrawn",
+        replacement["id"]: "published",
+    }
+    assert account_client.get(f"{PATH}/{original['id']}/pages", headers=admin).json() == [
+        {"number": 1, "text": "Old nursery notes"},
+    ]
+
+
+def test_transient_pdf_failure_can_be_retried_by_administrator(
+    account_client, accounts, monkeypatch
+):
+    admin = login(account_client, "admin")
+    farmer = login(account_client, "farmer")
+    uploaded = account_client.post(
+        PATH + "/pdf",
+        headers=admin | {"Content-Type": "application/pdf"},
+        content=sample_pdf(),
+    )
+    assert uploaded.status_code == 201
+    version = uploaded.json()
+    retry = PATH + "/" + version["id"] + "/retry-pdf"
+    with monkeypatch.context() as patch:
+        patch.setattr(processing, "extract_pdf", lambda _: {"error": "timed_out"})
+        assert process_one(accounts[1])
+    [failed] = account_client.get(PATH, headers=admin).json()["items"]
+    assert failed["processing"] == "failed" and failed["retryable"]
+    assert account_client.post(retry, headers=farmer, json={}).status_code == 403
+    queued = account_client.post(retry, headers=admin, json={})
+    assert queued.status_code == 200 and queued.json()["processing"] == "queued"
+    assert queued.json()["checksum"] == version["checksum"]
+    assert account_client.post(retry, headers=admin, json={}).status_code == 409
+    assert process_one(accounts[1])
+    assert not process_one(accounts[1])
+    [ready] = account_client.get(PATH, headers=admin).json()["items"]
+    assert ready["processing"] == "ready" and not ready["retryable"]
+
+
+def test_pdf_queue_recovers_after_worker_process_dies(account_client, accounts, tmp_path):
+    admin = login(account_client, "admin")
+    queued = account_client.post(
+        PATH + "/pdf",
+        headers=admin | {"Content-Type": "application/pdf"},
+        content=sample_pdf(),
+    )
+    assert queued.status_code == 201
+    version_id = queued.json()["id"]
+    marker = tmp_path / "extraction-started"
+    worker_code = """
+import os
+import sys
+from pathlib import Path
+from threading import Event
+from sqlalchemy.engine import make_url
+from app.core.config import Settings
+from app.modules.knowledge import processing
+
+url = Settings().test_database_url.get_secret_value()
+assert (make_url(url).database or "").endswith("_test")
+os.environ.update(
+    DATABASE_URL=url, APP_ENV="test",
+    OPEN_METEO_API_KEY="", OPEN_METEO_NONCOMMERCIAL="false",
+)
+if len(sys.argv) > 1:
+    marker = Path(sys.argv[1])
+    def pause_after_claim(_original):
+        marker.touch()
+        Event().wait()
+    processing.extract_pdf = pause_after_claim
+
+from app.worker.__main__ import main
+del sys.argv[1:]
+raise SystemExit(main())
+"""
+
+    def wait_for(worker, done):
+        until = monotonic() + 15
+        while monotonic() < until:
+            assert worker.poll() is None
+            if done():
+                return
+            sleep(0.1)
+        pytest.fail("PDF worker did not reach the expected state.")
+
+    with subprocess.Popen([sys.executable, "-c", worker_code, str(marker)]) as interrupted:
+        try:
+            wait_for(interrupted, marker.is_file)
+            assert not process_one(accounts[1])  # The live worker owns the row lock.
+        finally:
+            interrupted.kill()
+            interrupted.wait(timeout=10)
+
+    page_path = f"{PATH}/{version_id}/pages"
+    assert account_client.get(page_path, headers=admin).status_code == 409
+
+    with subprocess.Popen([sys.executable, "-c", worker_code]) as restarted:
+        try:
+            wait_for(
+                restarted, lambda: account_client.get(page_path, headers=admin).status_code == 200
+            )
+        finally:
+            restarted.terminate()
+            restarted.wait(timeout=10)
+    assert account_client.get(page_path, headers=admin).json() == [
+        {"number": 1, "text": "Synthetic nursery notes"},
+        {"number": 2, "text": "Synthetic field notes"},
+    ]
+    assert not process_one(accounts[1])
 
 
 @pytest.mark.parametrize("process", [False, True])

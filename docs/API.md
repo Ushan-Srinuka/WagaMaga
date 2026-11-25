@@ -20,7 +20,9 @@ An active administrator can use `GET /api/v1/admin/knowledge/sources/search?q=ke
 
 In development and test, an active administrator can call `POST /api/v1/admin/knowledge/evaluation/{case_id}/draft-answer` with `version_id`, `page_number`, `excerpt` and `english_translation`. The page must still match the question in a processed draft. The app checks the input quote against that exact page and returns the supplied draft translation as `answer`, with the original quote in `citation.excerpt`. Both text inputs are capped at 500 characters. The preview saves no reviews or scores and uses no provider. The browser origin must be permitted.
 
-Chilli questions uses `GET /api/v1/knowledge/chilli/research` for examples and `POST /api/v1/knowledge/chilli/research/ask` with `{question}` of 1–240 characters. Both require an active farmer. A supported question returns `kind: "research"`, `method: "reference" | "gemini"`, a versioned summary, and its `citation`. Study citations return `title`, `url`, `publisher`, `authors`, `year`, `journal_page`, `pdf_page` and `license_url`. Public crop-page citations return `title`, `url`, `publisher` and `section` with `method: "reference"`. Unmatched questions return `no_evidence`. For study answers, the server optionally sends the canonical question and fixed study summaries to Gemini, verifies the exact selection and falls back to the reference result when unavailable. Typed text, farm data and the three crop-page summaries stay local. The six provider attempts per farmer per hour use a separate rate limit. These routes are available independently of the farm guidance release flag.
+Chilli questions uses `GET /api/v1/knowledge/chilli/research` for examples and `POST /api/v1/knowledge/chilli/research/ask` with `{question}` of 1–240 characters. Both require an active farmer. Supported answers return `kind: "research"`, `method: "reference" | "gemini"`, a summary, `corpus_version`, `passage_id` and `citation`. Study citations include journal and PDF pages and license. Crop-guide citations include a section. Read the same versioned source note with `GET /api/v1/knowledge/chilli/research/sources/{version}/{passage_id}`. Unmatched questions return `no_evidence`. The optional Gemini selector receives the canonical study question and fixed study summaries, and the server verifies its exact selection. Typed questions and farm data stay local. These routes are independent of the farm guidance release flag.
+
+The administrator can list the live reference set at `GET /api/v1/admin/knowledge/sources/references`. Local PDF uploads also accept optional query parameters `title` and `replaces` (a published PDF version UUID). Publishing a processed, reviewed replacement withdraws the previous version in the same transaction and records both decisions.
 
 `POST /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/chilli-guidance` accepts a `topic` of `nursery-setup`, `irrigation-checks` or `soil-test` and uses the normal browser write-origin check. It returns a reference answer and citation where applicable, plus `confirmed_stage`, `soil_moisture` (optional value and observed timestamp), `missing` checks and `timezone`. Unsupported crop or district yields a null answer and citation with reasons. The endpoint uses the reported Anuradhapura district, a confirmed stage if recorded, and the latest structured soil moisture within 24 hours for irrigation. The response contains no free-text observations. Observation create, patch and history return the optional `soil_moisture` field (`dry`, `moist`, `waterlogged` or null). Explicit null clears the value on edit and preserves the prior revision.
 
@@ -176,12 +178,29 @@ All cultivation paths below are relative to `/api/v1/farms/{farm_id}/cultivation
 
 Review assignment, resubmission and first advisor decision each record a generic recipient update of type `advisor_review`. The `review_plan_id` on these notices opens `GET /api/v1/plan-reviews/{id}`. Farmers can open their own saved versions. Advisors can open current assigned cases. The link checks access on every request and exposes no farm details from the notification itself.
 
+### Chilli planner questions
+
+`POST /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/week/ask` accepts a question of up to 240 characters and an optional `task_id` for an explanation. The reply contains a message, a bounded task page for schedule questions, or the latest saved weekly suggestion for the selected task. The endpoint requires farmer ownership of the chilli cultivation and scopes the task to that cultivation. Asking a question performs no plan or task writes.
+
 ### Cultivation diary and task reminders
 
-- `GET /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/diary` returns the standard paginated result, newest first. Entries include an observation, task completion or cancellation, or executed plan action, with its timestamp and applicable due dates. Access follows cultivation history ownership and lifecycle rules.
+- `GET /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/diary` returns the standard paginated result, newest first. It combines observations, manual task additions and edits, terminal task changes, and saved plan decisions. Entries include applicable dates, revision, and evidence. Accepted plan effects appear once. A kept date is labelled as a decision. Pending suggestions remain in the review history. Access follows cultivation ownership and lifecycle rules.
 - The existing notifications list includes recipient-owned `task_due` and `task_overdue` notices. The list, unread count and read-state changes all exclude notices that no longer match an active task, date or reminder type.
 
 ## Other route groups and future scope
+
+### Cultivation-scoped reviewed PDF retrieval
+
+The same cultivation path offers `GET /chilli-chats` for paged history, `POST /chilli-chats` to start a conversation, and `GET` or `DELETE /chilli-chats/{chat_id}` to open or remove it. `POST /chilli-chats/{chat_id}/ask` accepts `question`, `expected_revision`, and an explicit `use_gemini` choice. Turns return a verified quote and a page citation or an explicit no-evidence, clarification, or provider-unavailable result. History reapplies source eligibility when read. Each conversation supports 20 questions. Stale writes return 409.
+
+The chat UI submits the same payload to `POST /chilli-chats/{chat_id}/jobs` and receives a 202 receipt. `GET /chilli-chats/{chat_id}/jobs` returns the latest job as `{job}`. Append a job ID to read a specific job, or `/{job_id}/retry` with POST to retry a failed job at the same chat revision. Only the cultivation and conversation owner can use these endpoints. The worker rechecks the original session for a queued job. An exact replay returns the existing active or successful receipt. States are `queued`, `running`, `failed`, and `succeeded`.
+
+The administrator can use `POST /api/v1/admin/knowledge/sources/{version_id}/retry-pdf` to requeue a draft PDF after a timeout or parser interruption. The source list exposes `retryable`. A ready, withdrawn or invalid PDF requires a different action.
+
+The local administrator PDF upload accepts an optional JSON `metadata` query parameter with `publisher`, `language`, `crop`, `region`, `published_on`, `valid_until`, and `access`. Use null for an unknown date. Access defaults to `admin`. Metadata is stored with the immutable version. Publishing a processed, reviewed PDF creates page-bound passages in the same transaction.
+
+- `POST /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/reviewed-sources/search` accepts `question` and optional `semantic` (default false). It returns at most eight ranked passages with stable IDs, source versions, and page numbers. The cultivation owner supplies the path; the server derives crop and region from that cultivation.
+- `GET /api/v1/farms/{farm_id}/cultivations/{cultivation_id}/reviewed-sources/{passage_id}` resolves a citation and applies the same source eligibility checks as search.
 
 Paths below are relative to `/api/v1`. Identity, farms/cultivations/observations and notifications are implemented as above. Remaining groups are representative future contracts, finalized with their own slice.
 

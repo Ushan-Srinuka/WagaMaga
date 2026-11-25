@@ -14,6 +14,7 @@ import { farmWrite, timestamp } from '../../lib/farms'
 import DemoWeather from './DemoWeather'
 import LiveWeather from './LiveWeather'
 import MissedTaskReview from './MissedTaskReview'
+import PlannerChat from './PlannerChat'
 import { Pagination, ReadState, SaveError } from './RecordUI'
 import { useRecord, useSave } from './record-hooks'
 import SuggestedPlans from './SuggestedPlans'
@@ -46,6 +47,7 @@ export default function TaskPanel({
   farmPath,
   timezone,
   archived,
+  chilli,
   review,
 }: {
   path: string
@@ -54,6 +56,7 @@ export default function TaskPanel({
   farmPath: string
   timezone: string
   archived: boolean
+  chilli?: boolean
   review: () => void
 }) {
   const filterId = useId()
@@ -138,6 +141,16 @@ export default function TaskPanel({
       </div>
       {archived && (
         <p className="muted">Archived cultivation. Tasks are read only.</p>
+      )}
+      {chilli && (
+        <PlannerChat
+          path={cultivationPath}
+          planPath={planPath}
+          timezone={timezone}
+          archived={archived}
+          blocked={taskEditorOpen || save.busy}
+          changed={reloadTasks}
+        />
       )}
       <WeeklyPlanner
         path={cultivationPath + '/week'}

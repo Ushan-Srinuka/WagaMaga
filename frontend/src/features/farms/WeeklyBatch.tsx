@@ -5,6 +5,7 @@ import {
   farmWrite,
   weeklyPlanStatus,
   type Page,
+  type TaskPlan,
   type TaskPlanDecision,
   type WeeklyPlan,
 } from '../../lib/farms'
@@ -12,20 +13,24 @@ import { Pagination, ReadState } from './RecordUI'
 import TaskDateComparison from './TaskDateComparison'
 import { useRecord, useSave } from './record-hooks'
 
+type BatchPlan = WeeklyPlan | TaskPlan
+
 export default function WeeklyBatch({
   path,
+  planPath,
   timezone,
   changed,
 }: {
   path: string
+  planPath: string
   timezone: string
   changed: () => void
 }) {
   const [page, setPage] = useState(1)
-  const [selected, setSelected] = useState<WeeklyPlan[]>([])
-  const [saved, setSaved] = useState<WeeklyPlan[]>([])
+  const [selected, setSelected] = useState<BatchPlan[]>([])
+  const [saved, setSaved] = useState<BatchPlan[]>([])
   const [notice, setNotice] = useState('')
-  const record = useRecord<Page<WeeklyPlan>>(`${path}?page=${page}`)
+  const record = useRecord<Page<BatchPlan>>(`${path}?page=${page}`)
   const save = useSave()
   const disabled = save.busy || save.blocked
 
@@ -82,6 +87,22 @@ export default function WeeklyBatch({
         </button>
         <button
           type="button"
+          disabled={disabled}
+          onClick={() =>
+            void save.run(
+              () => farmWrite<TaskPlan>(planPath, 'POST', {}),
+              () => {
+                setNotice('The recordkeeping addition is ready to review.')
+                setPage(1)
+                record.reload()
+              },
+            )
+          }
+        >
+          Include a recordkeeping task
+        </button>
+        <button
+          type="button"
           disabled={save.busy}
           onClick={() => {
             save.reset()
@@ -100,8 +121,10 @@ export default function WeeklyBatch({
           <ul>
             {saved.map((item) => (
               <li key={item.id}>
-                {item.title} · {item.current_due_date} →{' '}
-                {item.proposed_due_date}
+                {item.title} ·{' '}
+                {'current_due_date' in item
+                  ? `${item.current_due_date} → ${item.proposed_due_date}`
+                  : `Added for ${item.due_date}`}
               </li>
             ))}
           </ul>
@@ -120,12 +143,27 @@ export default function WeeklyBatch({
           )}
           {record.data.items.map((item) => {
             const checked = selected.some((plan) => plan.id === item.id)
-            const canAccept = item.state === 'ready' || item.state === 'cleared'
+            const dateChange = 'current_due_date' in item
+            const canAccept =
+              item.state === 'ready' ||
+              item.state === 'cleared' ||
+              (!dateChange && item.state === 'pending')
             return (
               <article className="record-inset" key={item.id}>
                 <h5 className="record-note">{item.title}</h5>
-                <p>{weeklyPlanStatus[item.state]}</p>
-                <TaskDateComparison plan={item} timezone={timezone} />
+                {dateChange ? (
+                  <>
+                    <p>{weeklyPlanStatus[item.state]}</p>
+                    <TaskDateComparison plan={item} timezone={timezone} />
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      Add task · Due {item.due_date} · {item.state}
+                    </p>
+                    <p>{item.evidence_text}</p>
+                  </>
+                )}
                 {canAccept && (
                   <label>
                     <input
@@ -143,7 +181,9 @@ export default function WeeklyBatch({
                     Select change for {item.title}
                   </label>
                 )}{' '}
-                <Link to={`/plan-reviews/${item.id}`}>Open suggestion</Link>
+                {dateChange && (
+                  <Link to={`/plan-reviews/${item.id}`}>Open suggestion</Link>
+                )}
               </article>
             )
           })}

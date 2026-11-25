@@ -250,7 +250,7 @@ export async function farmRead<T>(path: string): Promise<T> {
 }
 export async function farmWrite<T>(
   path: string,
-  method: 'POST' | 'PATCH',
+  method: 'POST' | 'PATCH' | 'DELETE',
   body: unknown,
   headers?: HeadersInit,
 ): Promise<T> {

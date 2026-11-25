@@ -23,6 +23,8 @@ import {
   TextArea,
 } from './RecordUI'
 import CultivationGuidance from './CultivationGuidance'
+import ChilliPdfChat from './ChilliPdfChat'
+import ReviewedSources from './ReviewedSources'
 import { useRecord, useSave } from './record-hooks'
 import TaskPanel from './TaskPanel'
 
@@ -247,6 +249,14 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
           </form>
         )}
       </section>
+      <ReviewedSources path={path} />
+      {isChilli && (
+        <ChilliPdfChat
+          path={path}
+          timezone={farm.data.timezone}
+          archived={cultivation.effective_archived}
+        />
+      )}
       <TaskPanel
         path={path + '/tasks'}
         planPath={path + '/task-plans'}
@@ -254,6 +264,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
         farmPath={`/farms/${farmId}`}
         timezone={farm.data.timezone}
         archived={cultivation.effective_archived}
+        chilli={isChilli}
         review={reload}
       />
       <Observations

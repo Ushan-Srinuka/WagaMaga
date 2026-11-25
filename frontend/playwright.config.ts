@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
-import { apiPort, webOrigin } from './e2e/environment.ts'
+import { apiPort, webOrigin, webPort } from './e2e/environment.ts'
 
 process.env.E2E_RUN_ID ??= randomBytes(8).toString('hex')
 process.env.E2E_PASSWORD ??= `Test1!${randomBytes(24).toString('hex')}`
@@ -34,7 +34,10 @@ export default defineConfig({
       timeout: 60000,
     },
     {
-      command: 'npm run dev',
+      command:
+        process.env.E2E_BUILT_FRONTEND === '1'
+          ? `npm run preview -- --port ${webPort} --strictPort`
+          : 'npm run dev',
       url: webOrigin,
       reuseExistingServer: false,
       timeout: 30000,

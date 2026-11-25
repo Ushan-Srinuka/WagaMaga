@@ -19,12 +19,27 @@ from pydantic import (
 
 class DiaryEntry(BaseModel):
     id: UUID
-    kind: Literal["observation", "completed", "cancelled", "create_task", "reschedule_task"]
+    kind: Literal[
+        "observation",
+        "created",
+        "edited",
+        "completed",
+        "cancelled",
+        "create_task",
+        "reschedule_task",
+        "plan_declined",
+        "weather_rescheduled",
+        "weather_kept",
+        "missed_task_kept",
+    ]
     occurred_at: datetime
     description: str
     soil_moisture: str | None
     previous_due_date: date | None
     due_date: date | None
+    revision: int | None
+    evidence: str | None
+    weekly_review: bool
 
 
 def trimmed(value: str) -> str:

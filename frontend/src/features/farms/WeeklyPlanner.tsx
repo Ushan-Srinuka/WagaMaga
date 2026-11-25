@@ -114,6 +114,7 @@ export default function WeeklyPlanner({
       )}
       {!archived && showBatch && !selectedTask && (
         <WeeklyBatch
+          planPath={planPath}
           path={planPath + '/weekly-batch'}
           timezone={timezone}
           changed={changed}

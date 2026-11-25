@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import Notice from '../../components/Notice'
 import { farmWrite, timestamp, type SoilMoisture } from '../../lib/farms'
+import ResearchPassage from '../knowledge/ResearchPassage'
 import { useSave } from './record-hooks'
 
 const questions = {
@@ -13,6 +14,8 @@ type Topic = keyof typeof questions
 type Answer = {
   answer: string | null
   citation: { section: string; url: string } | null
+  passage_id: string | null
+  corpus_version: string
   confirmed_stage: string | null
   soil_moisture: { value: SoilMoisture; observed_at: string } | null
   missing: string[]
@@ -26,6 +29,9 @@ export default function CultivationGuidance({ path }: { path: string }) {
   return (
     <section className="panel" aria-label="Chilli growing help">
       <h2>Chilli guidance for this cultivation</h2>
+      <p className="muted">
+        Scope · Chilli cultivations recorded in Anuradhapura District.
+      </p>
       <p>
         Check what the published source supports alongside your crop stage and
         observations.
@@ -90,6 +96,12 @@ export default function CultivationGuidance({ path }: { path: string }) {
             </p>
           )}
           <p>{answer.answer ?? 'No evidence found for this cultivation.'}</p>
+          {answer.passage_id && (
+            <ResearchPassage
+              id={answer.passage_id}
+              version={answer.corpus_version}
+            />
+          )}
           <h3>What to check</h3>
           <ul>
             {answer.missing.map((item) => (

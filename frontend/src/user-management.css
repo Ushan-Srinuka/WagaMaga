@@ -397,6 +397,9 @@ button.password-toggle {
   font: 700 24px/1.3 var(--font-sans);
   letter-spacing: -0.025em;
 }
+.knowledge-source-version {
+  overflow-wrap: anywhere;
+}
 .panel-title {
   display: flex;
   justify-content: space-between;

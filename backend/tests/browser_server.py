@@ -4,6 +4,7 @@ import os
 import sys
 from datetime import timedelta
 from pathlib import Path
+from threading import Event, Thread
 
 import uvicorn
 from alembic import command
@@ -20,6 +21,7 @@ from app.main import create_app
 from app.modules.identity.models import User
 from app.modules.identity.security import passwords
 from app.modules.identity.service import write_audit
+from app.modules.knowledge import chat_jobs
 from app.modules.knowledge.processing import process_one
 
 
@@ -102,9 +104,27 @@ def main():
         }
     )
     open_meteo.forecast = sample_forecast
-    uvicorn.run(
-        create_app(settings), host="127.0.0.1", port=api_port, proxy_headers=False, access_log=False
-    )
+    worker_db = Database(settings)
+    stop = Event()
+
+    def work():
+        while not stop.wait(0.25):
+            chat_jobs.process_one(worker_db.engine, settings)
+
+    worker = Thread(target=work, daemon=True)
+    worker.start()
+    try:
+        uvicorn.run(
+            create_app(settings),
+            host="127.0.0.1",
+            port=api_port,
+            proxy_headers=False,
+            access_log=False,
+        )
+    finally:
+        stop.set()
+        worker.join(timeout=20)
+        worker_db.close()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,11 @@
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { Link } from 'react-router'
 import Notice from '../../components/Notice'
 import Field from '../../components/Field'
@@ -21,43 +28,61 @@ export function ReadState({
   loading,
   error,
   retry,
+  review = false,
+  advisor = false,
 }: {
   loading: boolean
   error: unknown
   retry: () => void
+  review?: boolean
+  advisor?: boolean
 }) {
+  const title = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (review && !loading) title.current?.focus()
+  }, [review, loading, error])
   if (loading)
     return (
       <p className="empty-state" role="status">
-        Loading farm records…
+        {review ? 'Loading plan review…' : 'Loading farm records…'}
       </p>
     )
   const status =
     error && typeof error === 'object' && 'status' in error
       ? error.status
       : null
+  const heading = {
+    missing: review ? 'Review unavailable' : 'Record unavailable',
+    denied: review ? 'Review access denied' : 'Access denied',
+    failed: 'Let’s reconnect',
+  }
+  const message = review
+    ? {
+        missing:
+          'This review is unavailable for this account. An assignment may have changed.',
+        denied: 'This account cannot access this plan review.',
+        failed:
+          'The review could not be loaded. Check your connection and try again.',
+      }
+    : {
+        missing:
+          'This record is unavailable or does not belong to your account.',
+        denied: 'Farmer access is required for these records.',
+        failed:
+          'The records could not be loaded. Check your connection and try again.',
+      }
+  const state =
+    status === 404 ? 'missing' : status === 403 ? 'denied' : 'failed'
   return (
     <section className="panel record-state">
-      <h2>
-        {status === 404
-          ? 'Record unavailable'
-          : status === 403
-            ? 'Access denied'
-            : 'Let’s reconnect'}
+      <h2 ref={title} tabIndex={review ? -1 : undefined}>
+        {heading[state]}
       </h2>
-      <Notice
-        message={
-          status === 404
-            ? 'This record is unavailable or does not belong to your account.'
-            : status === 403
-              ? 'Farmer access is required for these records.'
-              : 'The records could not be loaded. Check your connection and try again.'
-        }
-      />
-      {![403, 404].includes(Number(status)) && (
-        <button onClick={retry}>Try again</button>
-      )}
-      <Link to="/farms">Back to My Farms</Link>
+      <Notice message={message[state]} />
+      {state === 'failed' && <button onClick={retry}>Try again</button>}
+      <Link to={advisor ? '/advisor/cases' : '/farms'}>
+        {advisor ? 'Back to assigned reviews' : 'Back to My Farms'}
+      </Link>
     </section>
   )
 }

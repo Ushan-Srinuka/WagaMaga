@@ -92,6 +92,10 @@ Migration `0023_plan_revision_notices` gives weekly plan revisions an optional u
 
 Migration `0024_task_reminders` links reminder notifications to an existing task and due date. A unique constraint on task, due date and event type prevents duplicate delivery. Closed and superseded reminders retain their stored rows and are filtered out of the inbox. The cultivation diary projects existing records and adds no table.
 
+Migration `0025_knowledge_replacements` adds a self-reference for immutable PDF replacement lineage and a partial unique index allowing one active replacement per previous version. The existing PDF processing table and decision history are reused. The versioned public reference set uses PostgreSQL full text and pgvector at query time with corpus data maintained in code.
+
+Migration `0026_reviewed_pdf_rag` stores immutable version metadata and adds `knowledge_passages`. Passage IDs derive from the source version, page, chunk ordinal and chunking version. Each row stores normalized text and optional vector, model, and index version. A GIN index supports full-text ranking. Vector ranking uses exact pgvector cosine distance within eligible sources. Withdrawal blocks retrieval immediately, and PDF deletion removes the copied passages and vectors. Database backups include this table.
+
 Weather date proposals reuse the append-only `task_plans` and `task_plan_decisions` tables. A date proposal stores the task ID/version, original and proposed dates, the applied threshold and a normalized snapshot of the forecast evidence. Each accepted decision points to a unique task event and version through a composite foreign key. Existing accepted example plans are backfilled to their original task creation event. Downgrade refuses while a weather date proposal exists.
 
 - UUID primary keys, explicit foreign keys and UTC event timestamps.
@@ -102,7 +106,11 @@ Weather date proposals reuse the append-only `task_plans` and `task_plan_decisio
 - Enforce execution/event/job/outbox uniqueness in the database, not only application memory.
 - Restrict audit rows to append-only access for the normal application role; administrative migration/retention privileges are separate.
 
+Migration `0027_private_chilli_chats` adds owner-scoped `chilli_chats` and append-only `chilli_chat_turns`. The chat revision orders turns and guards concurrent writes. Chat deletion cascades to its turns. Plan decisions and audit records have independent lifecycles. A stored citation is a passage ID and is resolved against current eligibility on read.
+
 ## Indexes
+
+Migration `0028_chilli_jobs` adds durable Chilli AI jobs with one active or successful job per chat revision, bounded attempts and a lease token. The turn and successful job state commit in one transaction. Conversation deletion cascades to its jobs. PDF extraction gains a bounded retry counter and a trigger that permits requeue only after a transient failure on a draft. The original PDF bytes remain immutable through retry.
 
 Index ownership and relationship filters, task cultivation/date/status, and notification recipient/read status. Use GIN for full text search. Record embedding model, dimensions and index version; never compare incompatible embeddings. Start with exact vector search for the small corpus and add approximate indexing only after measuring recall. See the [pgvector documentation](https://github.com/pgvector/pgvector).
 

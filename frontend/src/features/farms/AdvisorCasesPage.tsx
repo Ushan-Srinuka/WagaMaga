@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import Notice from '../../components/Notice'
+import { ApiError } from '../../lib/accounts'
 import {
   farmWrite,
+  failureText,
   type AdvisorCase,
   type AdvisorOutcome,
   type AdvisorReview,
@@ -32,7 +34,13 @@ export function AssignedReview({
   reload: () => void
 }) {
   const [reason, setReason] = useState('')
-  const save = useSave()
+  const save = useSave((error) => {
+    if (error instanceof ApiError && error.status === 409)
+      return 'This review changed. Reload the assigned case before saving.'
+    if (error instanceof ApiError && [403, 404].includes(error.status))
+      return 'This review is unavailable for your account.'
+    return failureText(error)
+  })
   function decide(outcome: AdvisorOutcome) {
     if (!reason.trim()) return
     void save.run(
@@ -47,7 +55,11 @@ export function AssignedReview({
     )
   }
   return (
-    <article className="panel" aria-label={`Advisor review for ${item.title}`}>
+    <article
+      className="panel"
+      aria-label={`Advisor review for ${item.title}`}
+      aria-busy={save.busy}
+    >
       <h2 className="record-note">{item.title}</h2>
       <p>
         Confirmed crop stage · {item.evidence.confirmed_stage ?? 'Not recorded'}
@@ -97,7 +109,10 @@ export function AssignedReview({
           )}
         </>
       ) : (
-        <p>The forecast changed. A fresh suggestion needs a new referral.</p>
+        <p role="status">
+          This suggestion is no longer current. A fresh suggestion needs a new
+          referral.
+        </p>
       )}
     </article>
   )
@@ -121,11 +136,13 @@ export default function AdvisorCasesPage() {
           loading={record.loading}
           error={record.error}
           retry={record.reload}
+          review
+          advisor
         />
       ) : (
         <>
           {!cases.items.length && (
-            <p>No current reviews are assigned to you.</p>
+            <p role="status">No current reviews are assigned to you.</p>
           )}
           <button type="button" onClick={record.reload}>
             Refresh reviews

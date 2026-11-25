@@ -12,6 +12,7 @@ import {
 } from '../../lib/farms'
 import TaskDateComparison from './TaskDateComparison'
 import { useRecord, useSave } from './record-hooks'
+import { ReadState } from './RecordUI'
 
 export default function WeeklySuggestion({
   task,
@@ -79,16 +80,31 @@ export default function WeeklySuggestion({
   }
 
   return (
-    <section className="panel record-inset" aria-label="Weekly date suggestion">
+    <section
+      className="panel record-inset"
+      aria-label="Weekly date suggestion"
+      aria-busy={save.busy}
+    >
       <h4>{task.title}</h4>
       {record.loading && <p role="status">Loading suggestion…</p>}
       {record.error !== undefined && (
-        <Notice message="The suggestion could not be loaded." />
+        <ReadState
+          loading={false}
+          error={record.error}
+          retry={record.reload}
+          review
+        />
       )}
       {save.error && <Notice message={save.error} />}
       {plan && (
         <>
           <p role="status">{weeklyPlanStatus[plan.state]}</p>
+          {plan.state === 'stale' && (
+            <p>
+              Refresh the planner and review a new suggestion before changing
+              this task.
+            </p>
+          )}
           {plan.revises_plan_id && (
             <p>
               Previous suggestion ·{' '}
@@ -177,6 +193,7 @@ export default function WeeklySuggestion({
           <Field
             label="Revised date"
             type="date"
+            autoFocus
             value={revisedDate}
             required
             disabled={disabled}
@@ -231,6 +248,7 @@ export default function WeeklySuggestion({
           <Field
             label="Advisor account email"
             type="email"
+            autoFocus
             value={email}
             required
             maxLength={254}
@@ -258,6 +276,9 @@ export default function WeeklySuggestion({
       {!plan && record.data && !task.rain_alert && (
         <p>A current rainfall alert is needed to suggest another date.</p>
       )}
+      {!plan && record.data && task.rain_alert && (
+        <p>No date suggestion has been saved for this task yet.</p>
+      )}
       <div className="record-toolbar">
         {canGenerate && task.rain_alert && (
           <button
@@ -277,16 +298,18 @@ export default function WeeklySuggestion({
             Suggest a date
           </button>
         )}
-        <button
-          type="button"
-          disabled={save.busy}
-          onClick={() => {
-            save.reset()
-            record.reload()
-          }}
-        >
-          Refresh suggestion
-        </button>
+        {record.error === undefined && (
+          <button
+            type="button"
+            disabled={save.busy}
+            onClick={() => {
+              save.reset()
+              record.reload()
+            }}
+          >
+            Refresh suggestion
+          </button>
+        )}
         {close && (
           <button type="button" disabled={save.busy} onClick={close}>
             Close suggestion

@@ -53,6 +53,31 @@ SELECT 'protected=' || (has_table_privilege(:'app_role', 'farm_task_events', 'SE
    AND NOT has_table_privilege(:'app_role', 'weather_review_notices', 'UPDATE')
    AND NOT has_table_privilege(:'app_role', 'task_plan_decisions', 'DELETE'))::text;
 
+SET ROLE :"app_role";
+SELECT 'documents=' || (EXISTS (
+    SELECT 1
+    FROM knowledge_evaluation_decisions d
+    JOIN knowledge_demo_versions v ON v.id = d.version_id
+    JOIN knowledge_source_pdfs p ON p.version_id = v.id
+    WHERE v.title = 'Synthetic restore reference'
+      AND v.status = 'published' AND p.state = 'ready'
+      AND v.checksum = encode(sha256(p.original), 'hex')
+      AND d.case_id = 'CH-01' AND d.outcome = 'suitable'
+      AND d.approved_excerpt <> ''
+      AND position(d.approved_excerpt IN (p.pages ->> (d.page_number - 1))) > 0
+) AND EXISTS (
+    SELECT 1
+    FROM knowledge_passages passage
+    JOIN knowledge_demo_versions v ON v.id = passage.version_id
+    JOIN knowledge_source_pdfs p ON p.version_id = v.id
+    WHERE v.title = 'Synthetic restore reviewed PDF'
+      AND v.status = 'published' AND p.state = 'ready'
+      AND v.checksum = encode(sha256(p.original), 'hex')
+      AND passage.page_number = 1
+      AND passage.body = (p.pages ->> (passage.page_number - 1))
+))::text;
+RESET ROLE;
+
 SELECT 'farm:' || md5(coalesce(string_agg(to_jsonb(f)::text, ',' ORDER BY id), '')) FROM farms f
 UNION ALL SELECT 'task:' || md5(string_agg(to_jsonb(t)::text, ',' ORDER BY id)) FROM farm_tasks t
 UNION ALL SELECT 'event:' || md5(string_agg(to_jsonb(e)::text, ',' ORDER BY task_id, version))
@@ -72,6 +97,16 @@ UNION ALL SELECT 'notification:' || md5(string_agg(to_jsonb(n)::text, ',' ORDER 
 UNION ALL SELECT 'plan:' || md5(string_agg(to_jsonb(p)::text, ',' ORDER BY id)) FROM task_plans p
 UNION ALL SELECT 'decision:' || md5(string_agg(to_jsonb(d)::text, ',' ORDER BY plan_id))
     FROM task_plan_decisions d
+UNION ALL SELECT 'source:' || md5(string_agg(to_jsonb(v)::text, ',' ORDER BY id))
+    FROM knowledge_demo_versions v
+UNION ALL SELECT 'source-decision:' || md5(string_agg(to_jsonb(d)::text, ',' ORDER BY version_id, revision))
+    FROM knowledge_demo_decisions d
+UNION ALL SELECT 'pdf:' || md5(string_agg(to_jsonb(p)::text, ',' ORDER BY version_id))
+    FROM knowledge_source_pdfs p
+UNION ALL SELECT 'citation:' || md5(string_agg(to_jsonb(d)::text, ',' ORDER BY case_id, revision))
+    FROM knowledge_evaluation_decisions d
+UNION ALL SELECT 'passage:' || md5(coalesce(string_agg(to_jsonb(p)::text, ',' ORDER BY id), ''))
+    FROM knowledge_passages p
 ORDER BY 1;
 SQL
 }
@@ -85,6 +120,10 @@ if ! printf '%s\n' "$before" | grep -Fxq 'protected=true'; then
   echo "Expected restricted application privileges on the backup source" >&2
   exit 1
 fi
+if ! printf '%s\n' "$before" | grep -Fxq 'documents=true'; then
+  echo "Expected an intact original PDF and a resolvable synthetic citation" >&2
+  exit 1
+fi
 pg_dump --username "$POSTGRES_USER" --dbname "$TEST_DB_NAME" --format custom --file "$archive"
 createdb --username "$POSTGRES_USER" --template template0 "$restored_db"
 created=true
@@ -94,5 +133,5 @@ if [ "$before" != "$after" ]; then
   echo "Restored evidence or privileges differ from the backup source" >&2
   exit 1
 fi
-echo "Restore verified for synthetic farm, forecast, weather alert and task decision data."
+echo "Restore verified for synthetic farms, tasks, forecasts, PDF bytes, extracted text and citations."
 exit 0

@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
 
@@ -27,6 +27,7 @@ from app.modules.knowledge import (
     local_answers,
     pilot,
     preview_fixture,
+    rag,
     research,
     service,
 )
@@ -66,12 +67,15 @@ class Source(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     title: str
+    rag_metadata: rag.Metadata | None = None
+    replaces_version_id: UUID | None = None
     content: str
     checksum: str
     status: Literal["draft", "reviewed", "published", "withdrawn", "discarded", "deleted"]
     revision: int
     processing: Literal["queued", "ready", "failed", "deleted"]
     processing_error: str | None
+    retryable: bool = False
 
 
 class SourcePage(BaseModel):
@@ -341,6 +345,16 @@ def research_questions(db: DB, ids: Principal):
     return research.questions(db, ids)
 
 
+@farmer_router.get("/research/sources/{version}/{passage_id}", response_model=research.Passage)
+def research_passage(version: str, passage_id: str, db: DB, ids: Principal):
+    return research.farmer_passage(db, ids, version, passage_id)
+
+
+@router.get("/references", response_model=list[research.Passage])
+def public_references():
+    return research.library()
+
+
 @farmer_router.post(
     "/research/ask", response_model=research.ResearchAnswer | NoEvidence, dependencies=writes
 )
@@ -426,11 +440,18 @@ async def upload_pdf(
     request: Request,
     db: DB,
     ids: Principal,
+    title: Annotated[str | None, Query(max_length=120, pattern=r"^[^\x00-\x1f\x7f]*$")] = None,
+    replaces: UUID | None = None,
+    metadata: Annotated[str | None, Query(max_length=1800)] = None,
 ):
     if request.app.state.settings.app_env == "production":
         raise IdentityError(403, "PDF_DEMO_ONLY", "PDF upload is available in the local demo.")
     if request.headers.get("content-type") != "application/pdf":
         raise IdentityError(415, "PDF_REQUIRED", "Choose a PDF file.")
+    try:
+        reference = rag.Metadata.model_validate_json(metadata) if metadata else None
+    except ValidationError:
+        raise IdentityError(422, "INVALID_SOURCE_METADATA", "Check the PDF metadata.") from None
     content = bytearray()
     try:
         async with timeout(8):
@@ -441,13 +462,25 @@ async def upload_pdf(
     except TimeoutError, ClientDisconnect:
         raise IdentityError(408, "UPLOAD_INTERRUPTED", "The PDF upload did not finish.") from None
     return await run_in_threadpool(
-        service.add_pdf, db, ids, bytes(content), request.state.request_id
+        service.add_pdf,
+        db,
+        ids,
+        bytes(content),
+        request.state.request_id,
+        title=title.strip() if title else None,
+        replaces=replaces,
+        metadata=reference,
     )
 
 
 @router.get("/{version_id}/pages", response_model=list[PdfPage])
 def pages(version_id: UUID, db: DB, ids: Principal):
     return service.source_pages(db, ids, version_id)
+
+
+@router.post("/{version_id}/retry-pdf", response_model=Source, dependencies=writes)
+def retry_pdf(version_id: UUID, db: DB, ids: Principal):
+    return service.retry_pdf(db, ids, version_id)
 
 
 @router.post("/{version_id}/{action}", response_model=Source, dependencies=writes)

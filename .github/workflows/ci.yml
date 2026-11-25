@@ -34,7 +34,7 @@ jobs:
         run: uv run alembic upgrade head
       - name: Test rules, API and real PostgreSQL permissions
         run: uv run pytest --require-database
-      - name: Seed synthetic task and forecast records for restore verification
+      - name: Seed synthetic farm and document records for restore verification
         run: >-
           uv run pytest --require-database
           tests/integration/test_farm_api.py::test_weather_reschedule_uses_exact_plan_and_commits_once
@@ -96,8 +96,11 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
+          npm run build
       - name: Test account, farm, support, admin and chilli journeys
         working-directory: frontend
+        env:
+          E2E_BUILT_FRONTEND: '1'
         run: npm run test:e2e -- --reporter=list,github
       - name: Database failure diagnostics
         if: failure()

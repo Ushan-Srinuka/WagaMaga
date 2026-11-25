@@ -1,4 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router'
+import { useSession } from '../../app/session-context'
 import type { PlanReviewLink } from '../../lib/farms'
 import { AssignedReview } from './AdvisorCasesPage'
 import { ReadState } from './RecordUI'
@@ -10,6 +11,7 @@ export default function PlanReviewPage() {
   const sourcePath = `/plan-reviews/${planId}`
   const record = useRecord<PlanReviewLink>(sourcePath)
   const navigate = useNavigate()
+  const { user } = useSession()
   const review = record.data
   if (!review)
     return (
@@ -17,6 +19,8 @@ export default function PlanReviewPage() {
         loading={record.loading}
         error={record.error}
         retry={record.reload}
+        review
+        advisor={user?.role === 'advisor'}
       />
     )
   if (review.role === 'advisor')

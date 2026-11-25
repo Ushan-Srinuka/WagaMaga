@@ -7,10 +7,16 @@ import { useRecord } from './record-hooks'
 
 const labels = {
   observation: 'Observation',
+  created: 'Task added manually',
+  edited: 'Task edited manually',
   completed: 'Task completed',
   cancelled: 'Task cancelled',
   create_task: 'Task added from a plan',
   reschedule_task: 'Task date changed from a plan',
+  plan_declined: 'Plan declined',
+  weather_rescheduled: 'Task date changed after weather review',
+  weather_kept: 'Task date kept after weather review',
+  missed_task_kept: 'Missed task date kept',
 }
 
 type DiaryEntry = {
@@ -21,6 +27,9 @@ type DiaryEntry = {
   soil_moisture: string | null
   previous_due_date: string | null
   due_date: string | null
+  revision: number | null
+  evidence: string | null
+  weekly_review: boolean
 }
 
 export function CultivationDiary({
@@ -47,7 +56,10 @@ export function CultivationDiary({
             <p className="muted">No activities recorded yet.</p>
           )}
           {diary.data.items.map((entry) => (
-            <article className="panel" key={`${entry.kind}:${entry.id}`}>
+            <article
+              className="panel"
+              key={`${entry.kind}:${entry.id}:${entry.revision}`}
+            >
               <h3>{labels[entry.kind]}</h3>
               <time className="muted" dateTime={entry.occurred_at}>
                 {timestamp(entry.occurred_at, timezone)} · {timezone}
@@ -58,15 +70,40 @@ export function CultivationDiary({
               )}
               {entry.due_date && (
                 <p>
-                  Due date:{' '}
-                  {entry.previous_due_date && `${entry.previous_due_date} → `}
-                  {entry.due_date}
+                  {[
+                    'weather_kept',
+                    'missed_task_kept',
+                    'plan_declined',
+                  ].includes(entry.kind)
+                    ? entry.previous_due_date
+                      ? `Kept ${entry.previous_due_date} · Suggested ${entry.due_date}`
+                      : `Declined date ${entry.due_date}`
+                    : `Due date: ${
+                        entry.previous_due_date &&
+                        entry.previous_due_date !== entry.due_date
+                          ? `${entry.previous_due_date} → `
+                          : ''
+                      }${entry.due_date}`}
                 </p>
+              )}
+              {entry.evidence && (
+                <p className="record-note">{entry.evidence}</p>
               )}
               {entry.kind === 'observation' && (
                 <Link to={`${path}/observations/${entry.id}/history`}>
                   View observation history
                 </Link>
+              )}
+              {entry.weekly_review && (
+                <Link to={`/plan-reviews/${entry.id}`}>
+                  View weekly plan review
+                </Link>
+              )}
+              {!entry.weekly_review && entry.evidence && (
+                <a href="#plan-history-heading">View plan decisions</a>
+              )}
+              {!entry.evidence && entry.kind !== 'observation' && (
+                <a href="#task-history-heading">View task history</a>
               )}
             </article>
           ))}

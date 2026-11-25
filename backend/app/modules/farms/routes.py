@@ -6,11 +6,20 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request
 
 from app.modules.advisory import service as advisory
-from app.modules.farms import diary, missed_tasks, plans, service, tasks, weekly, weekly_batch
+from app.modules.farms import (
+    diary,
+    missed_tasks,
+    planner_chat,
+    plans,
+    service,
+    tasks,
+    weekly,
+    weekly_batch,
+)
 from app.modules.farms import schemas as dto
 from app.modules.identity.dependencies import DB, Principal, browser_write, limiter
 from app.modules.identity.service import Limiter
-from app.modules.knowledge import cultivation_guidance
+from app.modules.knowledge import chat_jobs, chilli_chat, cultivation_guidance, rag
 from app.modules.weather import alerts, reschedules, scheduled
 from app.modules.weather import demo as weather_demo
 from app.modules.weather import live as live_weather
@@ -233,6 +242,138 @@ def planner_week(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, qu
     return weekly.week(db, ids, farm_id, cultivation_id, query)
 
 
+REVIEWED_SOURCES = "/farms/{farm_id}/cultivations/{cultivation_id}/reviewed-sources"
+CHILLI_CHATS = "/farms/{farm_id}/cultivations/{cultivation_id}/chilli-chats"
+
+
+@router.get(CHILLI_CHATS, response_model=dto.Page[chilli_chat.ChatSummary])
+def chilli_chats(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
+    return chilli_chat.list_chats(db, ids, farm_id, cultivation_id, query)
+
+
+@router.post(
+    CHILLI_CHATS, response_model=chilli_chat.ChatSummary, status_code=201, dependencies=write
+)
+def start_chilli_chat(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal):
+    return chilli_chat.create(db, ids, farm_id, cultivation_id)
+
+
+@router.get(CHILLI_CHATS + "/{chat_id}", response_model=chilli_chat.History)
+def chilli_chat_history(farm_id: UUID, cultivation_id: UUID, chat_id: UUID, db: DB, ids: Principal):
+    return chilli_chat.history(db, ids, farm_id, cultivation_id, chat_id)
+
+
+@router.delete(CHILLI_CHATS + "/{chat_id}", status_code=204, dependencies=write)
+def delete_chilli_chat(farm_id: UUID, cultivation_id: UUID, chat_id: UUID, db: DB, ids: Principal):
+    chilli_chat.delete(db, ids, farm_id, cultivation_id, chat_id)
+
+
+CHAT_JOBS = CHILLI_CHATS + "/{chat_id}/jobs"
+
+
+@router.post(CHAT_JOBS, response_model=chat_jobs.Status, status_code=202, dependencies=write)
+def submit_chilli_job(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    chat_id: UUID,
+    data: chilli_chat.Ask,
+    db: DB,
+    ids: Principal,
+):
+    return chat_jobs.submit(db, ids, farm_id, cultivation_id, chat_id, data)
+
+
+@router.get(CHAT_JOBS, response_model=chat_jobs.Latest)
+def latest_chilli_job(farm_id: UUID, cultivation_id: UUID, chat_id: UUID, db: DB, ids: Principal):
+    return chat_jobs.Latest(job=chat_jobs.status(db, ids, farm_id, cultivation_id, chat_id))
+
+
+@router.get(CHAT_JOBS + "/{job_id}", response_model=chat_jobs.Status)
+def read_chilli_job(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    chat_id: UUID,
+    job_id: UUID,
+    db: DB,
+    ids: Principal,
+):
+    return chat_jobs.status(db, ids, farm_id, cultivation_id, chat_id, job_id)
+
+
+@router.post(CHAT_JOBS + "/{job_id}/retry", response_model=chat_jobs.Status, dependencies=write)
+def retry_chilli_job(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    chat_id: UUID,
+    job_id: UUID,
+    db: DB,
+    ids: Principal,
+):
+    return chat_jobs.retry(db, ids, farm_id, cultivation_id, chat_id, job_id)
+
+
+@router.post(CHILLI_CHATS + "/{chat_id}/ask", response_model=chilli_chat.Turn, dependencies=write)
+def ask_chilli_chat(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    chat_id: UUID,
+    data: chilli_chat.Ask,
+    db: DB,
+    ids: Principal,
+    request: Request,
+    limits: Annotated[Limiter, Depends(limiter)],
+):
+    return chilli_chat.ask(
+        db,
+        ids,
+        farm_id,
+        cultivation_id,
+        chat_id,
+        data,
+        request.app.state.settings,
+        lambda: limits.check("chilli_pdf_chat", str(ids[0]), 16, 60),
+    )
+
+
+@router.post(REVIEWED_SOURCES + "/search", response_model=rag.Results, dependencies=write)
+def search_reviewed_sources(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    data: rag.Search,
+    db: DB,
+    ids: Principal,
+    request: Request,
+    limits: Annotated[Limiter, Depends(limiter)],
+):
+    return rag.search(
+        db,
+        ids,
+        farm_id,
+        cultivation_id,
+        data,
+        request.app.state.settings,
+        lambda: limits.check("rag_semantic", str(ids[0]), 12, 60),
+    )
+
+
+@router.get(REVIEWED_SOURCES + "/{passage_id}", response_model=rag.Passage)
+def reviewed_source_passage(
+    farm_id: UUID,
+    cultivation_id: UUID,
+    passage_id: UUID,
+    db: DB,
+    ids: Principal,
+):
+    return rag.source_passage(db, ids, farm_id, cultivation_id, passage_id)
+
+
+@router.post(WEEK + "/ask", response_model=planner_chat.Answer, dependencies=write)
+def ask_planner(
+    farm_id: UUID, cultivation_id: UUID, data: planner_chat.Question, db: DB, ids: Principal
+):
+    return planner_chat.ask(db, ids, farm_id, cultivation_id, data)
+
+
 @router.get(SUGGESTION, response_model=weekly.LatestWeeklyPlan)
 def weekly_suggestion(farm_id: UUID, cultivation_id: UUID, task_id: UUID, db: DB, ids: Principal):
     return weekly.latest(db, ids, farm_id, cultivation_id, task_id)
@@ -314,7 +455,7 @@ def revise_weekly_suggestion(
     )
 
 
-@router.get(BATCH, response_model=dto.Page[weekly.WeeklyPlan])
+@router.get(BATCH, response_model=dto.Page[weekly.WeeklyPlan | dto.PlanOut])
 def weekly_batch_plans(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principal, query: Paging):
     return weekly_batch.list_plans(db, ids, farm_id, cultivation_id, query)
 

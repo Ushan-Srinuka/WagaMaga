@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     gemini_approved_pdf_checksums: set[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]] = Field(
         default_factory=set
     )
+    rag_embedding_pdf_checksums: set[Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]] = Field(
+        default_factory=set
+    )
     farmer_advisory_enabled: bool = False
     local_nursery_reference: LocalNurseryReference | None = None
     local_chilli_references: dict[Literal["CH-04", "CH-05"], LocalNurseryReference] = Field(

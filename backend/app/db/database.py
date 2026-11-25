@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 
-SCHEMA_REVISION = "0024_task_reminders"
+SCHEMA_REVISION = "0028_chilli_jobs"
 
 
 @dataclass(frozen=True)

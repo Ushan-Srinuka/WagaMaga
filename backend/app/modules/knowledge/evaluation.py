@@ -94,7 +94,7 @@ def case_evidence(db, case_id):
     matches = {}
     for keywords in (case.keywords, case.sinhala_keywords):
         for page in service.published_page_matches(
-            db, keywords, exclude_checksum=preview_fixture.CHECKSUM
+            db, keywords, exclude_checksum=preview_fixture.CHECKSUM, legacy_only=True
         ):
             matches.setdefault((page["version_id"], page["number"]), page)
     latest = (

@@ -84,6 +84,10 @@ class WeeklyBatchReceipt(BaseModel):
 def week(db, ids, farm_id, cultivation_id, query):
     actor = service.farmer(db, ids)
     farm, cultivation = service.cultivation_for(db, actor.id, cultivation_id, farm_id=farm_id)
+    return week_for(db, farm, cultivation, query)
+
+
+def week_for(db, farm, cultivation, query, *, scope="all"):
     stamp = live.now()
     start = service.local_today(db, farm, at=stamp)
     end = start + WEEK
@@ -92,15 +96,13 @@ def week(db, ids, farm_id, cultivation_id, query):
     rule = db.get(WeatherAlertRule, cultivation.id)
     qualifying = alerts.qualifying_days(rule, forecast) if fresh else {}
     editable = farm.archived_at is None and cultivation.archived_at is None
+    in_week = FarmTask.due_date.between(start, end)
+    overdue = and_(FarmTask.due_date < start, FarmTask.status == "pending")
+    upcoming = and_(in_week, FarmTask.status == "pending")
+    window = {"all": or_(in_week, overdue), "upcoming": upcoming, "overdue": overdue}[scope]
     statement = (
         select(FarmTask)
-        .where(
-            FarmTask.cultivation_id == cultivation.id,
-            or_(
-                FarmTask.due_date.between(start, end),
-                and_(FarmTask.due_date < start, FarmTask.status == "pending"),
-            ),
-        )
+        .where(FarmTask.cultivation_id == cultivation.id, window)
         .order_by(FarmTask.due_date, FarmTask.id)
     )
 

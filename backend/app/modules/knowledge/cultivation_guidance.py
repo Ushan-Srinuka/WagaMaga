@@ -10,7 +10,7 @@ from app.modules.farms import schemas
 from app.modules.farms import service as farms
 from app.modules.farms.models import CHILLI_ID, CropType, FarmObservation
 from app.modules.identity.security import now
-from app.modules.knowledge.research import ENTRIES, ExtensionCitation
+from app.modules.knowledge.research import ENTRIES, VERSION, ExtensionCitation
 
 Topic = Literal["nursery-setup", "irrigation-checks", "soil-test"]
 RECENT = timedelta(hours=24)
@@ -30,6 +30,8 @@ class MoistureReading(BaseModel):
 class GuidanceAnswer(BaseModel):
     answer: str | None = None
     citation: ExtensionCitation | None = None
+    passage_id: Topic | None = None
+    corpus_version: str = VERSION
     confirmed_stage: str | None = None
     soil_moisture: MoistureReading | None = None
     missing: list[str]
@@ -101,5 +103,10 @@ def ask(db, ids, farm_id, cultivation_id, data):
             "Get a soil test for this plot before deciding on phosphorus or potassium amounts."
         )
     return GuidanceAnswer(
-        answer=answer, citation=entry.citation, soil_moisture=reading, missing=missing, **shared
+        answer=answer,
+        citation=entry.citation,
+        passage_id=data.topic,
+        soil_moisture=reading,
+        missing=missing,
+        **shared,
     )
