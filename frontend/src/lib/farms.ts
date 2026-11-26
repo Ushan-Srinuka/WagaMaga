@@ -196,6 +196,8 @@ export type AdvisorReview = {
   decided_at: string
 }
 export type AdvisorCase = ReschedulePlan & {
+  assigned_at: string
+  expires_at: string
   evidence: WeeklyEvidence
   review: AdvisorReview | null
   can_review: boolean

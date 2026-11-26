@@ -5,7 +5,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID, uuid5
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 from sqlalchemy import text
 
 from app.integrations import embeddings
@@ -74,9 +74,17 @@ class Metadata(BaseModel):
     published_on: date | None
     valid_until: date | None
     access: Literal["admin", "farmers"] = "admin"
+    source_url: HttpUrl | None = None
+    reuse_basis: str | None = Field(
+        default=None, min_length=1, max_length=240, pattern=r"^[^\x00-\x1f\x7f]+$"
+    )
 
     @model_validator(mode="after")
     def validate_dates(self):
+        if self.source_url and (
+            self.source_url.username or self.source_url.password or len(str(self.source_url)) > 300
+        ):
+            raise ValueError("Enter a source URL without credentials, up to 300 characters.")
         if self.published_on and self.valid_until and self.valid_until < self.published_on:
             raise ValueError("Validity must end on or after publication.")
         self.region = district_key(self.region)
@@ -99,6 +107,8 @@ class Passage(BaseModel):
     body: str
     publisher: str
     language: str
+    source_url: HttpUrl | None = None
+    reuse_basis: str | None = None
 
 
 class Results(BaseModel):
@@ -155,6 +165,7 @@ def create_passages(db, source):
 
 ELIGIBLE = """
     v.status = 'published' AND pdf.state = 'ready'
+    AND (NOT :screened_only OR pdf.screening_required)
     AND v.rag_metadata->>'access' = 'farmers'
     AND v.rag_metadata->>'crop' = :crop
     AND v.rag_metadata->>'region' IN (:region, 'sri lanka')
@@ -163,7 +174,8 @@ ELIGIBLE = """
 """
 PASSAGE_COLUMNS = """
     p.id, p.version_id, v.title, p.page_number, p.body,
-    v.rag_metadata->>'publisher' AS publisher, v.rag_metadata->>'language' AS language
+    v.rag_metadata->>'publisher' AS publisher, v.rag_metadata->>'language' AS language,
+    v.rag_metadata->>'source_url' AS source_url, v.rag_metadata->>'reuse_basis' AS reuse_basis
 """
 SOURCES = """
     FROM knowledge_passages p
@@ -206,6 +218,7 @@ def search(
         answer_checksums=list(answer_checksums or ()),
         keyword=mode != "vector",
         stopwords=list(QUESTION_WORDS),
+        screened_only=settings.app_env == "production",
     )
     eligible = (
         ELIGIBLE + " AND (:public_search OR v.checksum = ANY(CAST(:answer_checksums AS text[])))"
@@ -266,15 +279,15 @@ def search(
     )
 
 
-def source_passage(db, ids, farm_id, cultivation_id, passage_id, *, answer_checksums=None):
+def source_passage(db, ids, farm_id, cultivation_id, passage_id, *, screened_only=False):
     params = scope(db, ids, farm_id, cultivation_id) | {"passage_id": passage_id}
-    result = eligible_passages(db, params, [passage_id], answer_checksums=answer_checksums)
+    result = eligible_passages(db, params, [passage_id], screened_only=screened_only)
     if passage_id not in result:
         raise IdentityError(404, "PASSAGE_NOT_FOUND", "Source passage not found.")
     return result[passage_id]
 
 
-def eligible_passages(db, params, passage_ids, *, answer_checksums=None):
+def eligible_passages(db, params, passage_ids, *, answer_checksums=None, screened_only=False):
     row = db.execute(
         text(f"""
         SELECT {PASSAGE_COLUMNS} {SOURCES}
@@ -286,6 +299,7 @@ def eligible_passages(db, params, passage_ids, *, answer_checksums=None):
             "passage_ids": passage_ids,
             "public_search": answer_checksums is None,
             "answer_checksums": list(answer_checksums or ()),
+            "screened_only": screened_only,
         },
     ).mappings()
     return {item["id"]: Passage.model_validate(item) for item in row}

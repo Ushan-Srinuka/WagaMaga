@@ -15,6 +15,16 @@ function dates(start: string) {
   })
 }
 
+const dayFormat = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+})
+function dayLabel(date: string) {
+  return dayFormat.format(new Date(`${date}T00:00:00Z`))
+}
+
 export default function WeeklyPlanner({
   path,
   tasksPath,
@@ -23,6 +33,7 @@ export default function WeeklyPlanner({
   revision,
   archived,
   blocked,
+  complete,
   openTask,
   changed,
 }: {
@@ -33,6 +44,7 @@ export default function WeeklyPlanner({
   revision: string
   archived: boolean
   blocked: boolean
+  complete: (task: WeekTask) => void
   openTask: (id: string) => void
   changed: () => void
 }) {
@@ -55,6 +67,10 @@ export default function WeeklyPlanner({
   }, [suggestion])
 
   const week = record.data
+  const today =
+    week?.items.filter((task) => task.due_date === week.starts_on) ?? []
+  const overdue =
+    week?.items.filter((task) => task.due_date < week.starts_on) ?? []
   const selectedTask =
     week?.items.find((task) => task.id === suggestion?.id) ?? suggestion
   function decided(outcome: PlanOutcome) {
@@ -67,10 +83,23 @@ export default function WeeklyPlanner({
       <li key={task.id}>
         <strong className="record-note">{task.title}</strong>
         <p className="muted">
-          <time dateTime={task.due_date}>{task.due_date}</time> · {task.status}
-          {task.rain_alert && ` · Rain alert (${task.precipitation_mm} mm)`}
+          <time dateTime={task.due_date}>{dayLabel(task.due_date)}</time> ·{' '}
+          {task.status}
         </p>
+        {task.rain_alert && (
+          <p className="planner-rain">
+            Rain alert ({task.precipitation_mm} mm)
+          </p>
+        )}
         <div className="button-row">
+          {!archived && task.status === 'pending' && (
+            <button
+              disabled={blocked || Boolean(suggestion)}
+              onClick={() => complete(task)}
+            >
+              Mark done
+            </button>
+          )}
           <button
             type="button"
             aria-label={`Open task ${task.title}`}
@@ -100,7 +129,9 @@ export default function WeeklyPlanner({
   }
   return (
     <section className="panel record-inset" aria-labelledby="week-heading">
-      <h3 id="week-heading">Seven-day planner</h3>
+      <h3 id="week-heading" tabIndex={-1}>
+        Seven-day planner
+      </h3>
       {notice && <Notice success message={notice} />}
       {!archived && !selectedTask && (
         <button
@@ -141,39 +172,61 @@ export default function WeeklyPlanner({
       ) : (
         <>
           <p className="muted">
-            {week.starts_on} to {week.ends_on} · {timezone}
+            {dayLabel(week.starts_on)} to {dayLabel(week.ends_on)} · {timezone}
           </p>
-          {week.items.some((task) => task.due_date < week.starts_on) && (
-            <section aria-label="Overdue tasks">
+          <section
+            className="planner-day"
+            aria-label={`Tasks for ${week.starts_on}`}
+          >
+            <h4>Today’s tasks</h4>
+            {today.length > 0 ? (
+              <ul className="planner-tasks">{today.map(taskRow)}</ul>
+            ) : (
+              <p>
+                {week.total > week.page_size
+                  ? 'No tasks for today on this page.'
+                  : 'No tasks for today.'}
+              </p>
+            )}
+          </section>
+          {overdue.length > 0 && (
+            <section
+              className="planner-day planner-overdue"
+              aria-label="Overdue tasks"
+            >
               <h4>Overdue tasks</h4>
-              <ul className="planner-tasks">
-                {week.items
-                  .filter((task) => task.due_date < week.starts_on)
-                  .map(taskRow)}
-              </ul>
+              <ul className="planner-tasks">{overdue.map(taskRow)}</ul>
             </section>
           )}
+          {week.items.some((task) => task.due_date > week.starts_on) && (
+            <h4>Coming up</h4>
+          )}
           <div className="planner-week">
-            {dates(week.starts_on).map((day) => {
-              const entries = week.items.filter((task) => task.due_date === day)
-              return (
-                <section
-                  className="planner-day"
-                  key={day}
-                  aria-label={`Tasks for ${day}`}
-                >
-                  <h4>
-                    <time dateTime={day}>{day}</time>
-                  </h4>
-                  {entries.length > 0 && (
-                    <ul className="planner-tasks">{entries.map(taskRow)}</ul>
-                  )}
-                </section>
-              )
-            })}
+            {dates(week.starts_on)
+              .slice(1)
+              .map((day) => {
+                const entries = week.items.filter(
+                  (task) => task.due_date === day,
+                )
+                if (!entries.length) return null
+                return (
+                  <section
+                    className="planner-day"
+                    key={day}
+                    aria-label={`Tasks for ${day}`}
+                  >
+                    <h4>
+                      <time dateTime={day}>{dayLabel(day)}</time>
+                    </h4>
+                    {entries.length > 0 && (
+                      <ul className="planner-tasks">{entries.map(taskRow)}</ul>
+                    )}
+                  </section>
+                )
+              })}
           </div>
           {week.total === 0 && <p>No overdue or scheduled tasks this week.</p>}
-          {!suggestion && (
+          {!suggestion && week.total > week.page_size && (
             <Pagination result={week} page={page} change={setPage} />
           )}
         </>

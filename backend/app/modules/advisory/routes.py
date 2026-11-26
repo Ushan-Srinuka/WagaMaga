@@ -18,8 +18,12 @@ def open_review(plan_id: UUID, db: DB, ids: Principal):
     return service.open_review(db, ids, plan_id)
 
 
+class CaseQuery(dto.Paging):
+    view: service.ReviewView = "all"
+
+
 @router.get("", response_model=dto.Page[service.CaseOut])
-def cases(db: DB, ids: Principal, query: Annotated[dto.Paging, Query()]):
+def cases(db: DB, ids: Principal, query: Annotated[CaseQuery, Query()]):
     return service.inbox(db, ids, query)
 
 

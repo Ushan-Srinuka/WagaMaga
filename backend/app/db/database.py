@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 
-SCHEMA_REVISION = "0028_chilli_jobs"
+SCHEMA_REVISION = "0029_screened_knowledge"
 
 
 @dataclass(frozen=True)

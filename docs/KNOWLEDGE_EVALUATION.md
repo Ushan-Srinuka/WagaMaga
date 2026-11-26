@@ -82,6 +82,8 @@ An LLM judge may assist triage, but cannot replace the required human review. Sc
 
 ## Runs and reports
 
+The [32-question candidate PDF baseline](../evaluation/reports/chilli-real-pdf-candidate-2026-11-25.md) measures keyword retrieval on the two CC BY research papers. Independent suitability and claim review remain open. Production farmer advisory release requires the operator’s quality report attestation and the existing applicable pilot checks. [Release configuration](OPERATIONS.md#farmer-advisory-release)
+
 The [32-question local report](../evaluation/reports/chilli-anuradhapura-v1-2026-11-24.md) records the current retrieval and answer checks for the public reference set.
 
 Keep datasets in `evaluation/datasets/` and reports in `evaluation/reports/` when created. Record date, commit, corpus/document versions, embedding/index version, model/provider, prompt version, retrieval settings, timeouts, usage/cost, metrics, human findings and unresolved failures.

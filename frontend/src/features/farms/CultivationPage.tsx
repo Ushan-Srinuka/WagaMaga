@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useSession } from '../../app/session-context'
 import Field from '../../components/Field'
@@ -30,9 +30,10 @@ import TaskPanel from './TaskPanel'
 
 export default function CultivationPage() {
   const { farmId = '', cultivationId = '' } = useParams()
+  const [params] = useSearchParams()
   return (
     <CultivationDetail
-      key={`${farmId}:${cultivationId}`}
+      key={`${farmId}:${cultivationId}:${params.get('view')}`}
       farmId={farmId}
       id={cultivationId}
     />
@@ -41,6 +42,8 @@ export default function CultivationPage() {
 function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
   const { user } = useSession()
   const [params] = useSearchParams()
+  const view = params.get('view')
+  const overview = !['planner', 'notes', 'chat'].includes(view ?? '')
   const startObservation = params.get('observe') === '1'
   const farm = useRecord<Farm>(`/farms/${farmId}`)
   const path = `/farms/${farmId}/cultivations/${id}`
@@ -49,6 +52,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
   const [editing, setEditing] = useState(false)
   const [editorBusy, setEditorBusy] = useState(false)
   const [observationDraft, setObservationDraft] = useState(startObservation)
+  const [addingObservation, setAddingObservation] = useState(startObservation)
   const [archive, setArchive] = useState(false)
   const [stage, setStage] = useState('')
   const [notice, setNotice] = useState('')
@@ -60,6 +64,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
     setStage('')
     setNotice('')
     setObservationDraft(false)
+    setAddingObservation(false)
     setGuidanceRevision((revision) => revision + 1)
     save.reset()
     farm.reload()
@@ -75,6 +80,7 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
       />
     )
   const cultivation = record.data
+  const canEditObservation = !editing && !stage && !save.busy && !save.blocked
   const isChilli = crops.data?.items.some(
     (crop) => crop.id === cultivation.crop_type_id && crop.code === 'chilli',
   )
@@ -102,180 +108,251 @@ function CultivationDetail({ farmId, id }: { farmId: string; id: string }) {
         ← {farm.data.name}
       </Link>
       <Intro
-        eyebrow="Farm records / Cultivation details"
+        eyebrow={
+          view === 'chat'
+            ? 'Chilli AI'
+            : view === 'notes'
+              ? 'Field notes'
+              : view === 'planner'
+                ? 'Planner'
+                : 'Crop details'
+        }
         title={cropName(cultivation.crop_type_id, crops.data?.items ?? [])}
       >
         {farm.data.name} · Planting date {cultivation.planting_date}
       </Intro>
-      {isChilli && !cultivation.effective_archived && (
-        <CultivationGuidance
-          key={`${farm.data.version}:${cultivation.version}:${guidanceRevision}`}
-          path={path + '/chilli-guidance'}
+      <nav className="button-row crop-navigation" aria-label="Crop tools">
+        <Link to="/">Home</Link>
+        <Link
+          aria-current={view === 'notes' ? 'page' : undefined}
+          to={path + '?view=notes'}
+        >
+          Field notes
+        </Link>
+        <Link
+          aria-current={view === 'planner' ? 'page' : undefined}
+          to={path + '?view=planner'}
+        >
+          Planner
+        </Link>
+        {isChilli && (
+          <Link
+            aria-current={view === 'chat' ? 'page' : undefined}
+            to={path + '?view=chat'}
+          >
+            Ask Chilli AI
+          </Link>
+        )}
+        {!overview && <Link to={path}>Crop details</Link>}
+      </nav>
+      {(overview || view === 'notes') && (
+        <>
+          {!cultivation.effective_archived && (
+            <button
+              type="button"
+              className="primary"
+              disabled={observationDraft || !canEditObservation}
+              onClick={() => {
+                setAddingObservation(true)
+                setObservationDraft(true)
+              }}
+            >
+              Add a field note
+            </button>
+          )}
+          <Observations
+            key={`${id}:${cultivation.version}`}
+            farm={farm.data}
+            cultivation={cultivation}
+            canEdit={canEditObservation}
+            adding={addingObservation}
+            setAdding={setAddingObservation}
+            onDraft={setObservationDraft}
+            onSaved={() => setGuidanceRevision((revision) => revision + 1)}
+            startAdding={startObservation && !cultivation.effective_archived}
+          />
+        </>
+      )}
+      {(overview || view === 'planner') && (
+        <TaskPanel
+          path={path + '/tasks'}
+          planPath={path + '/task-plans'}
+          cultivationPath={path}
+          farmPath={`/farms/${farmId}`}
+          timezone={farm.data.timezone}
+          archived={cultivation.effective_archived}
+          chilli={isChilli}
+          review={reload}
         />
       )}
-      {notice && <Notice success message={notice} />}
-      {cultivation.effective_archived && (
-        <Archived inherited={!cultivation.archived_at} />
-      )}
-      <div className="record-toolbar">
-        <span
-          className={`status-pill ${cultivation.effective_archived ? 'disabled' : ''}`}
-        >
-          {cultivation.effective_archived
-            ? 'Archived'
-            : cultivation.planned
-              ? 'Planned cultivation'
-              : 'Active cultivation'}
-        </span>
-        <Link to={path + '/history'}>Cultivation history</Link>
-        {!cultivation.effective_archived && (
-          <>
-            <button
-              onClick={() => setEditing(!editing)}
-              disabled={
-                save.busy || editorBusy || observationDraft || Boolean(stage)
-              }
+      {overview && (
+        <>
+          {notice && <Notice success message={notice} />}
+          {cultivation.effective_archived && (
+            <Archived inherited={!cultivation.archived_at} />
+          )}
+          <div className="record-toolbar">
+            <span
+              className={`status-pill ${cultivation.effective_archived ? 'disabled' : ''}`}
             >
-              {editing ? 'Cancel editing' : 'Edit cultivation'}
-            </button>
-            <button
-              className="danger-action"
-              disabled={
-                save.busy ||
-                save.blocked ||
-                editing ||
-                observationDraft ||
-                Boolean(stage)
-              }
-              onClick={() => setArchive(true)}
-            >
-              Archive cultivation
-            </button>
-          </>
-        )}
-      </div>
-      {!archive && <SaveError {...save} review={reload} />}
-      {editing && !cultivation.effective_archived ? (
-        <section className="panel record-editor">
-          <h2>Edit cultivation</h2>
-          <CultivationForm
-            farm={farm.data}
-            record={cultivation}
-            onBusy={setEditorBusy}
-            saved={saved}
-            review={reload}
-          />
-        </section>
-      ) : (
-        <section
-          className="panel record-summary"
-          aria-label="Cultivation details"
-        >
-          <dl>
-            <div>
-              <dt>Planting date</dt>
-              <dd>{cultivation.planting_date}</dd>
-            </div>
-            <div>
-              <dt>Cultivation area</dt>
-              <dd>{area(cultivation.area_value, cultivation.area_unit)}</dd>
-            </div>
-            <div>
-              <dt>Soil information</dt>
-              <dd className="record-note">
-                {cultivation.soil_notes ?? 'Unknown'}
-              </dd>
-            </div>
-            <div>
-              <dt>Estimated stage</dt>
-              <dd>
-                {cultivation.estimated_stage ??
-                  'Unknown — no estimate available'}
-              </dd>
-            </div>
-          </dl>
-        </section>
-      )}
-      <section className="panel" aria-labelledby="stage-heading">
-        <p className="eyebrow">What you have observed</p>
-        <h2 id="stage-heading">Reported crop stage</h2>
-        <p className="record-note">
-          {cultivation.confirmed_stage ?? 'Not confirmed'}
-        </p>
-        {cultivation.confirmed_at && (
-          <p className="muted">
-            Confirmed by{' '}
-            {cultivation.confirmed_by === user?.id
-              ? 'you'
-              : 'the recorded account'}{' '}
-            on {timestamp(cultivation.confirmed_at, farm.data.timezone)} ·{' '}
-            {farm.data.timezone}
-          </p>
-        )}
-        <p className="muted">
-          A reported stage is your observation, not a recommendation to take an
-          agricultural action.
-        </p>
-        {!cultivation.effective_archived && (
-          <form onSubmit={confirm} className="record-stage-form">
-            <Field
-              label="Reported stage"
-              value={stage}
-              onChange={(e) => setStage(e.target.value)}
-              required
-              maxLength={80}
-              disabled={
-                save.busy || save.blocked || editing || observationDraft
-              }
-              hint="Enter only a stage you can confirm from your own observation."
-            />
-            <button
-              className="primary"
-              disabled={
-                save.busy || save.blocked || editing || observationDraft
-              }
-            >
-              {save.busy ? 'Saving…' : 'Confirm stage'}
-            </button>
-            {stage && (
-              <button
-                type="button"
-                disabled={save.busy}
-                onClick={() => setStage('')}
-              >
-                Cancel stage entry
-              </button>
+              {cultivation.effective_archived
+                ? 'Archived'
+                : cultivation.planned
+                  ? 'Planned cultivation'
+                  : 'Active cultivation'}
+            </span>
+            <Link to={path + '/history'}>Cultivation history</Link>
+            {!cultivation.effective_archived && (
+              <>
+                <button
+                  onClick={() => setEditing(!editing)}
+                  disabled={
+                    save.busy ||
+                    editorBusy ||
+                    observationDraft ||
+                    Boolean(stage)
+                  }
+                >
+                  {editing ? 'Cancel editing' : 'Edit cultivation'}
+                </button>
+                <button
+                  className="danger-action"
+                  disabled={
+                    save.busy ||
+                    save.blocked ||
+                    editing ||
+                    observationDraft ||
+                    Boolean(stage)
+                  }
+                  onClick={() => setArchive(true)}
+                >
+                  Archive cultivation
+                </button>
+              </>
             )}
-          </form>
-        )}
-      </section>
-      <ReviewedSources path={path} />
-      {isChilli && (
+          </div>
+          {!archive && <SaveError {...save} review={reload} />}
+          {editing && !cultivation.effective_archived ? (
+            <section className="panel record-editor">
+              <h2>Edit cultivation</h2>
+              <CultivationForm
+                farm={farm.data}
+                record={cultivation}
+                onBusy={setEditorBusy}
+                saved={saved}
+                review={reload}
+              />
+            </section>
+          ) : (
+            <section
+              className="panel record-summary"
+              aria-label="Cultivation details"
+            >
+              <dl>
+                <div>
+                  <dt>Planting date</dt>
+                  <dd>{cultivation.planting_date}</dd>
+                </div>
+                <div>
+                  <dt>Cultivation area</dt>
+                  <dd>{area(cultivation.area_value, cultivation.area_unit)}</dd>
+                </div>
+                <div>
+                  <dt>Soil information</dt>
+                  <dd className="record-note">
+                    {cultivation.soil_notes ?? 'Unknown'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Estimated stage</dt>
+                  <dd>
+                    {cultivation.estimated_stage ??
+                      'Unknown — no estimate available'}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          )}
+          <section className="panel" aria-labelledby="stage-heading">
+            <p className="eyebrow">What you have observed</p>
+            <h2 id="stage-heading">Reported crop stage</h2>
+            <p className="record-note">
+              {cultivation.confirmed_stage ?? 'Not confirmed'}
+            </p>
+            {cultivation.confirmed_at && (
+              <p className="muted">
+                Confirmed by{' '}
+                {cultivation.confirmed_by === user?.id
+                  ? 'you'
+                  : 'the recorded account'}{' '}
+                on {timestamp(cultivation.confirmed_at, farm.data.timezone)} ·{' '}
+                {farm.data.timezone}
+              </p>
+            )}
+            <p className="muted">
+              A reported stage is your observation, not a recommendation to take
+              an agricultural action.
+            </p>
+            {!cultivation.effective_archived && (
+              <form onSubmit={confirm} className="record-stage-form">
+                <Field
+                  label="Reported stage"
+                  value={stage}
+                  onChange={(e) => setStage(e.target.value)}
+                  required
+                  maxLength={80}
+                  disabled={
+                    save.busy || save.blocked || editing || observationDraft
+                  }
+                  hint="Enter only a stage you can confirm from your own observation."
+                />
+                <button
+                  className="primary"
+                  disabled={
+                    save.busy || save.blocked || editing || observationDraft
+                  }
+                >
+                  {save.busy ? 'Saving…' : 'Confirm stage'}
+                </button>
+                {stage && (
+                  <button
+                    type="button"
+                    disabled={save.busy}
+                    onClick={() => setStage('')}
+                  >
+                    Cancel stage entry
+                  </button>
+                )}
+              </form>
+            )}
+          </section>
+          {isChilli && !cultivation.effective_archived && (
+            <CultivationGuidance
+              key={`${farm.data.version}:${cultivation.version}:${guidanceRevision}`}
+              path={path + '/chilli-guidance'}
+            />
+          )}
+          <ReviewedSources path={path} />
+        </>
+      )}
+      {(overview || view === 'chat') && isChilli && (
         <ChilliPdfChat
           path={path}
           timezone={farm.data.timezone}
           archived={cultivation.effective_archived}
         />
       )}
-      <TaskPanel
-        path={path + '/tasks'}
-        planPath={path + '/task-plans'}
-        cultivationPath={path}
-        farmPath={`/farms/${farmId}`}
-        timezone={farm.data.timezone}
-        archived={cultivation.effective_archived}
-        chilli={isChilli}
-        review={reload}
-      />
-      <Observations
-        key={`${id}:${cultivation.version}`}
-        farm={farm.data}
-        cultivation={cultivation}
-        canEdit={!editing && !stage && !save.busy && !save.blocked}
-        onDraft={setObservationDraft}
-        onSaved={() => setGuidanceRevision((revision) => revision + 1)}
-        startAdding={startObservation && !cultivation.effective_archived}
-      />
+      {view === 'chat' &&
+        !isChilli &&
+        (crops.data ? (
+          <p>This chat is available for chilli crops.</p>
+        ) : (
+          <ReadState
+            loading={crops.loading}
+            error={crops.error}
+            retry={crops.reload}
+          />
+        ))}
       {archive && (
         <ConfirmDialog
           eyebrow="Farm records / Archive"
@@ -312,6 +389,8 @@ function Observations({
   canEdit,
   onDraft,
   onSaved,
+  adding,
+  setAdding,
   startAdding = false,
 }: {
   farm: Farm
@@ -319,17 +398,24 @@ function Observations({
   canEdit: boolean
   onDraft: (open: boolean) => void
   onSaved: () => void
+  adding: boolean
+  setAdding: (open: boolean) => void
   startAdding?: boolean
 }) {
   const [page, setPage] = useState(1)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [editing, setEditing] = useState<Observation | null>(null)
-  const [adding, setAdding] = useState(startAdding)
+  const newForm = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!adding || cultivation.effective_archived) return
+    const form = newForm.current
+    form?.querySelector('textarea')?.focus({ preventScroll: true })
+    form?.scrollIntoView?.({ block: 'nearest' })
+  }, [adding, cultivation.effective_archived])
   const [, setParams] = useSearchParams()
   useEffect(() => {
     if (!startAdding) return
-    document.getElementById('observations-heading')?.focus()
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous)
@@ -357,29 +443,15 @@ function Observations({
     <section className="panel" aria-labelledby="observations-heading">
       <div className="title-row">
         <div>
-          <p className="eyebrow">Your field notebook</p>
           <h2 id="observations-heading" tabIndex={-1}>
-            Observations
+            Field notes
           </h2>
         </div>
-        {!cultivation.effective_archived && !adding && !editing && (
-          <button
-            className="primary"
-            disabled={!canEdit}
-            onClick={() => {
-              setNotice('')
-              setAdding(true)
-              onDraft(true)
-            }}
-          >
-            Add observation
-          </button>
-        )}
       </div>
       {notice && <Notice success message={notice} />}
       {(adding || editing) && !cultivation.effective_archived && (
-        <div className="record-inset">
-          <h3>{editing ? 'Edit observation' : 'New observation'}</h3>
+        <div className="record-inset" ref={adding ? newForm : undefined}>
+          <h3>{editing ? 'Edit field note' : 'New field note'}</h3>
           <ObservationForm
             key={editing?.id ?? 'new'}
             record={editing ?? undefined}
@@ -393,7 +465,10 @@ function Observations({
               onDraft(false)
               list.reload()
               onSaved()
-              setNotice('Observation saved.')
+              setPage(1)
+              setFrom('')
+              setTo('')
+              setNotice('Note saved.')
             }}
           />
           <button
@@ -405,30 +480,33 @@ function Observations({
               onDraft(false)
             }}
           >
-            Cancel observation editing
+            Cancel editing note
           </button>
         </div>
       )}
-      <div className="record-filters">
-        <Field
-          label="From date (UTC)"
-          type="date"
-          value={from}
-          onChange={(e) => {
-            setFrom(e.target.value)
-            setPage(1)
-          }}
-        />
-        <Field
-          label="To date (UTC)"
-          type="date"
-          value={to}
-          onChange={(e) => {
-            setTo(e.target.value)
-            setPage(1)
-          }}
-        />
-      </div>
+      <details>
+        <summary>Filter notes by date</summary>
+        <div className="record-filters">
+          <Field
+            label="From date (UTC)"
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value)
+              setPage(1)
+            }}
+          />
+          <Field
+            label="To date (UTC)"
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value)
+              setPage(1)
+            }}
+          />
+        </div>
+      </details>
       {from && to && from > to ? (
         <Notice message="The end date must be on or after the start date." />
       ) : !list.data ? (
@@ -441,7 +519,7 @@ function Observations({
         <>
           {!list.data.items.length ? (
             <div className="empty-state">
-              <h3>No observations to show.</h3>
+              <h3>No field notes to show.</h3>
               <p>
                 Keep a note of what you observe, without guessing unknown
                 conditions.
@@ -462,7 +540,7 @@ function Observations({
                   <div className="button-row">
                     {!cultivation.effective_archived && (
                       <button
-                        aria-label={`Edit observation from ${timestamp(item.observed_at, farm.timezone)}`}
+                        aria-label={`Edit field note from ${timestamp(item.observed_at, farm.timezone)}`}
                         disabled={!canEdit || adding || Boolean(editing)}
                         onClick={() => {
                           setNotice('')
@@ -470,13 +548,13 @@ function Observations({
                           onDraft(true)
                         }}
                       >
-                        Edit observation
+                        Edit field note
                       </button>
                     )}
                     <Link
                       to={`/farms/${farm.id}/cultivations/${cultivation.id}/observations/${item.id}/history`}
                     >
-                      Observation history
+                      Note history
                     </Link>
                   </div>
                 </li>
@@ -511,7 +589,9 @@ function ObservationForm({
   onBusy: (busy: boolean) => void
 }) {
   const initialTime = record ? deviceTime(record.observed_at) : ''
-  const [observed, setObserved] = useState(initialTime)
+  const [observed, setObserved] = useState(
+    () => initialTime || deviceTime(new Date().toISOString()),
+  )
   const [notes, setNotes] = useState(record?.notes ?? '')
   const [soilMoisture, setSoilMoisture] = useState<SoilMoisture | ''>(
     record?.soil_moisture ?? '',
@@ -562,52 +642,51 @@ function ObservationForm({
     <form onSubmit={submit} className="record-form">
       <fieldset disabled={save.busy || save.blocked}>
         <legend className="visually-hidden">Observation details</legend>
-        <Field
-          label="Observed at (device time)"
-          type="datetime-local"
-          step="0.001"
-          value={observed}
-          onChange={(e) => setObserved(e.target.value)}
-          required
-          hint={`Using ${Intl.DateTimeFormat().resolvedOptions().timeZone} on this device. Saved notes are displayed in ${timezone}.`}
-        />
-        <button
-          type="button"
-          onClick={() => setObserved(deviceTime(new Date().toISOString()))}
-        >
-          Use current time
-        </button>
         <TextArea
-          label="Observation notes"
+          label="What did you see?"
           required
           value={notes}
           change={setNotes}
           maxLength={4000}
         />
-        <div className="field">
-          <label htmlFor="observation-soil-moisture">
-            Soil moisture (optional)
-          </label>
-          <select
-            id="observation-soil-moisture"
-            value={soilMoisture}
-            onChange={(event) =>
-              setSoilMoisture(event.target.value as SoilMoisture | '')
-            }
+        <details>
+          <summary>Time and soil moisture</summary>
+          <Field
+            label="Observed at (device time)"
+            type="datetime-local"
+            step="0.001"
+            value={observed}
+            onChange={(e) => setObserved(e.target.value)}
+            required
+            hint={`Using ${Intl.DateTimeFormat().resolvedOptions().timeZone} on this device. Saved notes are displayed in ${timezone}.`}
+          />
+          <button
+            type="button"
+            onClick={() => setObserved(deviceTime(new Date().toISOString()))}
           >
-            <option value="">Not recorded</option>
-            <option value="dry">Dry</option>
-            <option value="moist">Moist</option>
-            <option value="waterlogged">Waterlogged</option>
-          </select>
-        </div>
+            Use current time
+          </button>
+          <div className="field">
+            <label htmlFor="observation-soil-moisture">
+              Soil moisture (optional)
+            </label>
+            <select
+              id="observation-soil-moisture"
+              value={soilMoisture}
+              onChange={(event) =>
+                setSoilMoisture(event.target.value as SoilMoisture | '')
+              }
+            >
+              <option value="">Not recorded</option>
+              <option value="dry">Dry</option>
+              <option value="moist">Moist</option>
+              <option value="waterlogged">Waterlogged</option>
+            </select>
+          </div>
+        </details>
         {invalid && <Notice message={invalid} />}
         <button className="primary" disabled={save.busy || save.blocked}>
-          {save.busy
-            ? 'Saving…'
-            : record
-              ? 'Save observation'
-              : 'Record observation'}
+          {save.busy ? 'Saving…' : 'Save note'}
         </button>
       </fieldset>
       <SaveError {...save} review={review} create={!record} />

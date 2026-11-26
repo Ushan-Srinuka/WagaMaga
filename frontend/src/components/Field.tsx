@@ -1,6 +1,6 @@
-import { useId, useState, type InputHTMLAttributes } from 'react'
+import { useId, useState, type ComponentPropsWithRef } from 'react'
 
-type Props = InputHTMLAttributes<HTMLInputElement> & {
+type Props = ComponentPropsWithRef<'input'> & {
   label: string
   hint?: string
 }

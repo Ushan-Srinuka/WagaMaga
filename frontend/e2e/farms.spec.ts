@@ -134,13 +134,46 @@ test('farmer manages manual tasks and sees their cultivation history', async ({
   await login(page, owner.email)
   await page.goto(cultivation)
   const tasks = page.getByRole('region', { name: 'Farm tasks' })
+  const add = tasks.getByRole('button', { name: 'Add task', exact: true })
+  const titleInput = tasks.getByLabel('Task title')
+  const dueDate = tasks.getByLabel('Due date')
+  const save = tasks.getByRole('button', { name: 'Save task' })
+
+  await expect(add).toBeEnabled()
+  await add.focus()
+  await page.keyboard.press('Enter')
+  await expect(add).toHaveAttribute('aria-expanded', 'true')
+  await expect(titleInput).toBeFocused()
+  await expect(titleInput).toBeInViewport({ ratio: 1 })
+  const buttonBottom = await add.evaluate(
+    (button) => button.getBoundingClientRect().bottom + window.scrollY,
+  )
+  const formTop = await titleInput.evaluate(
+    (input) =>
+      (input.closest('form')?.getBoundingClientRect().top ?? 0) +
+      window.scrollY,
+  )
+  expect(formTop - buttonBottom).toBeGreaterThanOrEqual(0)
+  expect(formTop - buttonBottom).toBeLessThan(65)
+
+  await expect(save).toBeDisabled()
+  await titleInput.fill('Discard this task')
+  await expect(save).toBeDisabled()
+  await titleInput.fill('   ')
+  await dueDate.fill('2099-01-16')
+  await expect(save).toBeDisabled()
+  await tasks.getByRole('button', { name: 'Discard draft' }).click()
+  await expect(titleInput).toHaveCount(0)
+  await expect(add).toHaveAttribute('aria-expanded', 'false')
+  await expect(add).toBeFocused()
 
   async function addTask(title: string) {
-    await tasks.getByRole('button', { name: 'Add task' }).click()
-    await tasks.getByLabel('Task title').fill(title)
-    await tasks.getByLabel('Due date').fill('2099-01-16')
+    await add.click()
+    await expect(titleInput).toHaveValue('')
+    await titleInput.fill(title)
+    await dueDate.fill('2099-01-16')
     await fit(page)
-    await tasks.getByRole('button', { name: 'Save task' }).click()
+    await save.click()
     await expect(tasks.getByRole('heading', { name: title })).toBeVisible()
   }
 
@@ -154,7 +187,7 @@ test('farmer manages manual tasks and sees their cultivation history', async ({
   await tasks.getByLabel('Due date').fill('2099-01-17')
   await tasks.getByRole('button', { name: 'Save task' }).click()
   await expect(task.getByText('Due 2099-01-17')).toBeVisible()
-  await task.getByRole('button', { name: 'Mark complete' }).click()
+  await task.getByRole('button', { name: 'Mark done' }).click()
   await expect(tasks.getByText('No pending tasks.')).toBeVisible()
 
   await addTask('Copy plot labels')
@@ -198,6 +231,13 @@ test('farmer reviews a missed task and decides whether to move it', async ({
   expect(created.ok()).toBe(true)
   await login(page, owner.email)
   await page.goto(cultivation)
+  const overdue = page.getByRole('region', { name: 'Overdue tasks' })
+  await expect(overdue).toContainText('Synthetic missed field check')
+  await expect(overdue.locator('time')).toHaveAttribute('datetime', original)
+  await expect(overdue.locator('time')).not.toHaveText(original)
+  await overdue
+    .getByRole('button', { name: 'Open task Synthetic missed field check' })
+    .click()
   const task = page.getByRole('article').filter({
     has: page.getByRole('heading', {
       name: 'Synthetic missed field check',
@@ -310,6 +350,7 @@ test('farmer reviews a matching task from the demo weather sample', async ({
     return
   }
   await tasks.getByRole('button', { name: 'Show demo weather' }).click()
+  await page.getByText('Weather and alerts', { exact: true }).click()
   const weather = tasks.getByRole('region', { name: 'Demo weather' })
   await expect(
     weather.getByText(/Simulated forecast for Synthetic village/),
@@ -372,6 +413,7 @@ test('farmer fetches a farm forecast and sees it alongside a pending task', asyn
   const farmPath = cultivation.split('/cultivations/')[0]
   await login(page, owner.email)
   await page.goto(cultivation)
+  await page.getByText('Weather and alerts', { exact: true }).click()
   const weather = page.getByRole('region', { name: 'Weather forecast' })
   await expect(
     weather.getByRole('link', { name: 'Open farm to add coordinates' }),
@@ -386,6 +428,7 @@ test('farmer fetches a farm forecast and sees it alongside a pending task', asyn
   })
   expect(updated.ok()).toBe(true)
   await page.reload()
+  await page.getByText('Weather and alerts', { exact: true }).click()
   await weather.getByRole('button', { name: 'Fetch forecast' }).click()
   await expect(
     weather.getByRole('link', { name: 'Weather data by Open-Meteo' }),
@@ -414,6 +457,7 @@ test('farmer fetches a farm forecast and sees it alongside a pending task', asyn
     matching.getByRole('button', { name: 'Edit task' }),
   ).toBeVisible()
   await page.reload()
+  await page.getByText('Weather and alerts', { exact: true }).click()
   await expect(
     weather.getByRole('button', { name: 'Refresh forecast' }),
   ).toBeVisible()
@@ -434,7 +478,7 @@ test('farmer fetches a farm forecast and sees it alongside a pending task', asyn
   await expect(
     weather.getByRole('list', { name: 'Daily forecast' }),
   ).toBeVisible()
-  await matching.getByRole('button', { name: 'Mark complete' }).click()
+  await matching.getByRole('button', { name: 'Mark done' }).click()
   await expect(tasks.getByText('No pending tasks.')).toBeVisible()
   await tasks.getByLabel('Task status').selectOption('completed')
   await expect(matching.getByText('Completed', { exact: true })).toBeVisible()
@@ -456,6 +500,7 @@ test('farmer sets a weather alert and confirms a reviewed task date', async ({
   await login(page, owner.email)
   await page.goto(cultivation)
   const tasks = page.getByRole('region', { name: 'Farm tasks' })
+  await page.getByText('Weather and alerts', { exact: true }).click()
   const weather = tasks.getByRole('region', { name: 'Weather forecast' })
   await weather.getByRole('button', { name: 'Fetch forecast' }).click()
   const due = await weather
@@ -502,6 +547,7 @@ test('farmer sets a weather alert and confirms a reviewed task date', async ({
   ).toBeVisible()
   await expect(alert).toHaveCount(0)
   await page.reload()
+  await page.getByText('Weather and alerts', { exact: true }).click()
   await expect(
     task.getByText(`Due ${replacement}`, { exact: true }),
   ).toBeVisible()
@@ -510,6 +556,7 @@ test('farmer sets a weather alert and confirms a reviewed task date', async ({
     .click()
   await expect(weather.getByText('On for this farm')).toBeVisible()
   await page.reload()
+  await page.getByText('Weather and alerts', { exact: true }).click()
   await expect(weather.getByText('On for this farm')).toBeVisible()
   await weather
     .getByRole('button', { name: 'Turn off automatic alerts' })
@@ -606,7 +653,7 @@ test('farmer revises an advisor suggestion from notices and confirms the cleared
     page.getByRole('button', { name: 'Back to task list' }),
   ).toBeVisible()
   const chat = page.getByRole('region', {
-    name: 'Ask Chilli AI about this planner',
+    name: 'Ask about my tasks',
   })
   await chat
     .getByLabel('Your planner question')
@@ -640,8 +687,11 @@ test('farmer revises an advisor suggestion from notices and confirms the cleared
     await advisorPage.getByLabel('Email address').fill(advisor.email)
     await advisorPage.getByLabel('Password', { exact: true }).fill(password)
     await advisorPage.getByRole('button', { name: 'Sign in' }).click()
-    await expect(advisorPage).toHaveURL('/account')
-    await advisorPage.goto('/advisor/cases')
+    await expect(advisorPage).toHaveURL('/advisor')
+    await advisorPage.getByRole('link', { name: 'All plan reviews' }).click()
+    await expect(
+      advisorPage.getByRole('heading', { name: 'Assigned plan reviews' }),
+    ).toBeVisible()
     await expect(
       advisorPage.getByText('No current reviews are assigned to you.'),
     ).toBeVisible()
@@ -676,7 +726,10 @@ test('farmer revises an advisor suggestion from notices and confirms the cleared
         }),
       { times: 1 },
     )
-    await assigned.getByRole('button', { name: 'Request changes' }).click()
+    await assigned
+      .getByLabel('Review outcome')
+      .selectOption('changes_requested')
+    await assigned.getByRole('button', { name: 'Submit decision' }).click()
     await expect(assigned.getByRole('alert')).toContainText(
       'Reload the assigned case before saving',
     )
@@ -686,7 +739,10 @@ test('farmer revises an advisor suggestion from notices and confirms the cleared
     await assigned
       .getByLabel('Review reason')
       .fill('Consider the following dry day.')
-    await assigned.getByRole('button', { name: 'Request changes' }).click()
+    await assigned
+      .getByLabel('Review outcome')
+      .selectOption('changes_requested')
+    await assigned.getByRole('button', { name: 'Submit decision' }).click()
     await expect(assigned).toContainText('Changes requested')
 
     await openPlanNotice(page, 'Advisor requested changes')
@@ -715,7 +771,8 @@ test('farmer revises an advisor suggestion from notices and confirms the cleared
     await assigned
       .getByLabel('Review reason')
       .fill('The revised date works for this synthetic task.')
-    await assigned.getByRole('button', { name: 'Clear suggestion' }).click()
+    await assigned.getByLabel('Review outcome').selectOption('cleared')
+    await assigned.getByRole('button', { name: 'Submit decision' }).click()
     await expect(assigned.getByText('Cleared', { exact: true })).toBeVisible()
     expect(originalReview).toBeTruthy()
     await advisorPage.goto(originalReview!)
@@ -846,6 +903,25 @@ test('farmer completes the daily workflow with an observation, a task, weather a
   )
   await page.goto(cultivation)
   const guidance = page.getByRole('region', { name: 'Chilli growing help' })
+  const quickAddObservation = page.getByRole('button', {
+    name: 'Add a field note',
+  })
+  const plannerLink = page
+    .getByRole('navigation', { name: 'Crop tools' })
+    .getByRole('link', { name: 'Planner' })
+  const thisWeek = page.getByRole('link', { name: 'This week' })
+  const viewport = page.viewportSize()!
+  for (const width of [viewport.width, 768]) {
+    await page.setViewportSize({ width, height: viewport.height })
+    await expect(quickAddObservation).toBeInViewport()
+    await expect(plannerLink).toBeInViewport()
+    await fit(page)
+  }
+  await page.setViewportSize(viewport)
+  await thisWeek.click()
+  await expect(
+    page.getByRole('heading', { name: 'Seven-day planner' }),
+  ).toBeInViewport()
   const check = guidance.getByRole('button', { name: 'Check guidance' })
   const answer = guidance.getByRole('article', {
     name: 'Cultivation guidance answer',
@@ -854,14 +930,16 @@ test('farmer completes the daily workflow with an observation, a task, weather a
   await expect(answer).toContainText(
     'Record a recent soil moisture observation',
   )
-  const observations = page.getByRole('region', { name: 'Observations' })
-  await observations.getByRole('button', { name: 'Add observation' }).click()
-  await observations.getByRole('button', { name: 'Use current time' }).click()
+  const observations = page.getByRole('region', { name: 'Field notes' })
+  await quickAddObservation.click()
+  await expect(observations.getByLabel('What did you see?')).toBeFocused()
+  await expect(observations.getByLabel('What did you see?')).toBeInViewport()
+  await observations.getByText('Time and soil moisture').click()
   await observations
-    .getByLabel('Observation notes')
+    .getByLabel('What did you see?')
     .fill('Synthetic field reading')
   await observations.getByLabel('Soil moisture (optional)').selectOption('dry')
-  await observations.getByRole('button', { name: 'Record observation' }).click()
+  await observations.getByRole('button', { name: 'Save note' }).click()
   await expect(observations.getByText('Soil moisture: dry')).toBeVisible()
   await expect(answer).toHaveCount(0)
   await check.click()
@@ -873,11 +951,12 @@ test('farmer completes the daily workflow with an observation, a task, weather a
       name: /Department of Agriculture · Irrigation/,
     }),
   ).toHaveAttribute('href', 'https://doa.gov.lk/field-crops-chilli-si/')
-  await answer.getByRole('button', { name: 'Show supporting passage' }).click()
+  await answer.getByRole('button', { name: 'View source' }).click()
   await expect(
     answer.getByRole('region', { name: 'Supporting passage' }),
   ).toBeVisible()
 
+  await page.getByText('Weather and alerts', { exact: true }).click()
   const weather = page.getByRole('region', { name: 'Weather forecast' })
   await weather.getByRole('button', { name: 'Fetch forecast' }).click()
   const forecast = weather.getByRole('list', { name: 'Daily forecast' })
@@ -893,7 +972,7 @@ test('farmer completes the daily workflow with an observation, a task, weather a
     'No matching passages found.',
   )
   const pdfChat = page.getByRole('region', {
-    name: 'Ask Chilli AI about reviewed PDFs',
+    name: 'Ask Chilli AI about this crop',
   })
   await pdfChat.getByRole('button', { name: 'New chilli chat' }).click()
   await pdfChat
@@ -962,7 +1041,7 @@ test('farmer completes the daily workflow with an observation, a task, weather a
   await tasks.getByLabel('Due date').fill(due)
   await tasks.getByRole('button', { name: 'Save task' }).click()
   const chat = tasks.getByRole('region', {
-    name: 'Ask Chilli AI about this planner',
+    name: 'Ask about my tasks',
   })
   await chat.getByRole('button', { name: 'What’s due this week?' }).click()
   await expect(
@@ -974,7 +1053,7 @@ test('farmer completes the daily workflow with an observation, a task, weather a
   ).toContainText('Synthetic field reading')
   await page.goto('/knowledge/chilli')
   await page
-    .getByLabel('Type your question')
+    .getByLabel('What would you like to ask about chilli?')
     .fill('Which factors affect the watering interval for field chillies?')
   await page.getByRole('button', { name: 'Find an answer' }).click()
   const cited = page.getByRole('article', { name: 'Cited answer' })
@@ -982,28 +1061,60 @@ test('farmer completes the daily workflow with an observation, a task, weather a
   await fit(page)
 })
 
-test('visitor can start from the landing hero without loading private farms', async ({
+test('visitor can open login or registration from the chilli hero without reading private records', async ({
   page,
 }, info) => {
-  const farmReads: string[] = []
+  const privateReads: string[] = []
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.startsWith('/api/v1/farms'))
-      farmReads.push(request.url())
+    const path = new URL(request.url()).pathname
+    if (
+      path.startsWith('/api/v1/farms') ||
+      path.startsWith('/api/v1/knowledge')
+    )
+      privateReads.push(path)
   })
   await page.goto('/')
-  await expect(page.getByRole('link', { name: /Get started/ })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Get started/ })).toBeInViewport()
+  const hero = page.getByRole('main')
+  const login = hero.getByRole('link', { name: 'Log in to ask' })
+  const register = hero.getByRole('link', { name: 'Create account' })
+  await expect(
+    hero.getByRole('heading', { name: 'Ask Chilli AI', level: 1 }),
+  ).toBeInViewport()
+  await expect(login).toBeInViewport()
+  await expect(register).toBeInViewport()
   await fit(page)
   await page.screenshot({
     path: info.outputPath('landing-visitor.png'),
     fullPage: false,
   })
-  expect(farmReads).toEqual([])
-  await page.getByRole('link', { name: /Get started/ }).click()
+  const menu = page.getByRole('button', { name: 'Menu', exact: true })
+  const navigation = page.getByRole('navigation', { name: 'Main navigation' })
+  if (await menu.isVisible()) {
+    await menu.click()
+    await expect(menu).toHaveAttribute('aria-expanded', 'true')
+    await navigation.getByRole('link', { name: 'What you can do' }).focus()
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeFocused()
+    await expect(menu).toHaveAttribute('aria-expanded', 'false')
+    await menu.click()
+  }
+  await navigation.getByRole('link', { name: 'What you can do' }).click()
+  await expect(page).toHaveURL(/#chilli-ai$/)
+  await expect(
+    hero.getByRole('heading', { name: 'Ask Chilli AI', level: 2 }),
+  ).toBeInViewport()
+  const footer = page.getByRole('contentinfo')
+  await footer.getByRole('link', { name: 'Farm tools' }).click()
+  await expect(page).toHaveURL(/#farm-features$/)
+  await footer.getByRole('link', { name: 'Getting started' }).click()
+  await expect(page).toHaveURL(/#getting-started$/)
+  await fit(page)
+  await register.click()
   await expect(page).toHaveURL('/register')
   await page.goto('/')
-  await page.getByRole('link', { name: /Log in to your farms/ }).click()
-  await expect(page).toHaveURL('/login')
+  await login.click()
+  await expect(page).toHaveURL('/login?ask=chilli')
+  expect(privateReads).toEqual([])
 })
 
 test('plan review shows loading, retry, unavailable and denied states', async ({
@@ -1069,19 +1180,21 @@ test('farmer keeps farm, cultivation, observation and archive history through co
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await login(page, owner.email)
-  await expect(
-    page.getByText('Add your first farm', { exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('banner').getByRole('link', { name: /Add farm/ }),
-  ).toBeVisible()
-  await expect(page.getByRole('link', { name: /Add my farm/ })).toBeInViewport()
+  for (const name of [
+    'Ask Chilli AI',
+    'Add a field note',
+    'My Farms',
+    'Planner',
+  ]) {
+    await expect(page.getByRole('link', { name, exact: true })).toBeInViewport()
+  }
   await fit(page)
   await page.screenshot({
     path: info.outputPath('landing-new-farmer.png'),
     fullPage: false,
   })
-  await page.getByRole('link', { name: /Add my farm/ }).click()
+  await page.getByRole('link', { name: 'My Farms' }).click()
+  await page.getByRole('link', { name: 'Add your first farm' }).click()
   await page.getByLabel('Farm name').fill('Synthetic notebook farm')
   await expect(page.getByLabel('District', { exact: true })).toHaveValue('')
   await page
@@ -1111,6 +1224,12 @@ test('farmer keeps farm, cultivation, observation and archive history through co
   await expect(
     page.getByRole('heading', { name: 'Synthetic notebook farm.' }),
   ).toBeVisible()
+  if (
+    !(await page
+      .getByRole('button', { name: 'Edit farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Edit farm', exact: true }).click()
   await page.getByLabel('Farm name').fill('Synthetic notebook farm revised')
   await expect(
@@ -1120,7 +1239,8 @@ test('farmer keeps farm, cultivation, observation and archive history through co
   await expect(page.getByText('Farm details saved.')).toBeVisible()
   await expect(page.getByText('1.234567 ha', { exact: true })).toBeVisible()
   await page.goto('/')
-  await page.getByRole('link', { name: /Add what you are growing/ }).click()
+  await page.getByRole('link', { name: 'Planner' }).click()
+  await page.getByRole('link', { name: 'Add a crop' }).click()
   await page.getByLabel('Planting date').fill('2099-01-15')
   await page.getByLabel('Cultivation area', { exact: true }).fill('1.25')
   await fit(page)
@@ -1133,43 +1253,38 @@ test('farmer keeps farm, cultivation, observation and archive history through co
   ).toBeVisible()
   const cropURL = page.url()
   await page.goto('/')
-  await page.getByRole('link', { name: /Record first observation/ }).click()
-  await expect(page.getByLabel('Observation notes')).toBeVisible()
+  await page.getByRole('link', { name: /Add a field note/ }).click()
+  await expect(page.getByLabel('What did you see?')).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Archive cultivation', exact: true }),
-  ).toBeDisabled()
+  ).toHaveCount(0)
+  await page.getByText('Time and soil moisture').click()
   await page.getByLabel('Observed at (device time)').fill('2026-11-01T08:00')
   await page
-    .getByLabel('Observation notes')
+    .getByLabel('What did you see?')
     .fill('Initial synthetic field note <b>not HTML</b>')
   await fit(page)
-  await page
-    .getByRole('button', { name: 'Record observation', exact: true })
-    .click()
-  await expect(
-    page.getByText('Observation saved.', { exact: true }),
-  ).toBeVisible()
+  await page.getByRole('button', { name: 'Save note', exact: true }).click()
+  await expect(page.getByText('Note saved.', { exact: true })).toBeVisible()
   await expect(
     page.getByText('Initial synthetic field note <b>not HTML</b>', {
       exact: true,
     }),
   ).toBeVisible()
-  await page.getByRole('button', { name: /Edit observation from/ }).click()
+  await page.getByRole('button', { name: /Edit field note from/ }).click()
   await page
-    .getByLabel('Observation notes')
+    .getByLabel('What did you see?')
     .fill('Corrected synthetic field note')
-  await page
-    .getByRole('button', { name: 'Save observation', exact: true })
-    .click()
-  await expect(page.getByLabel('Observation notes')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save note', exact: true }).click()
+  await expect(page.getByLabel('What did you see?')).toHaveCount(0)
   await expect(
     page.getByText('Corrected synthetic field note', { exact: true }),
   ).toBeVisible()
   await page.goto('/')
   await expect(
-    page.getByRole('link', { name: /Open crop records/ }),
+    page.getByRole('link', { name: /Add a field note/ }),
   ).toBeVisible()
-  await expect(page.getByText('Pick up where you left off')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Planner' })).toBeInViewport()
   await fit(page)
   await page.screenshot({
     path: info.outputPath('landing-returning-farmer.png'),
@@ -1184,9 +1299,7 @@ test('farmer keeps farm, cultivation, observation and archive history through co
     path: info.outputPath('cultivation.png'),
     fullPage: true,
   })
-  await page
-    .getByRole('link', { name: 'Observation history', exact: true })
-    .click()
+  await page.getByRole('link', { name: 'Note history', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Version 2', exact: true }),
   ).toBeVisible()
@@ -1250,7 +1363,7 @@ test('farmer keeps farm, cultivation, observation and archive history through co
     }),
   ).toBeVisible()
   await expect(
-    page.getByRole('button', { name: 'Add observation', exact: true }),
+    page.getByRole('button', { name: 'Add a field note', exact: true }),
   ).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: 'Edit cultivation', exact: true }),
@@ -1268,8 +1381,14 @@ test('farmer keeps farm, cultivation, observation and archive history through co
     .getByRole('combobox', { name: 'Cultivation status', exact: true })
     .selectOption('archived')
   await expect(
-    page.getByRole('link', { name: 'Cultivation · 2099-02-01', exact: true }),
+    page.getByRole('link', { name: 'Chilli · 2099-02-01', exact: true }),
   ).toBeVisible()
+  if (
+    !(await page
+      .getByRole('button', { name: 'Archive farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Archive farm', exact: true }).click()
   await page
     .getByRole('dialog')
@@ -1314,9 +1433,7 @@ test('farmer keeps farm, cultivation, observation and archive history through co
   ).toBe(0)
   await menu(page)
   await page.getByRole('button', { name: /Sign out/ }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   await expect(
     page.getByText('Synthetic notebook farm revised', { exact: true }),
   ).toHaveCount(0)
@@ -1345,6 +1462,12 @@ test('stale drafts require reload and private record links deny other owners', a
   const foreign = await secret.json()
   await login(page, owner.email)
   await page.goto(`/farms/${farm.id}`)
+  if (
+    !(await page
+      .getByRole('button', { name: 'Edit farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Edit farm', exact: true }).click()
   await page.getByLabel('Farm name').fill('Unsaved browser draft')
   const concurrent = await request.patch(root + `/farms/${farm.id}`, {
@@ -1377,6 +1500,12 @@ test('stale drafts require reload and private record links deny other owners', a
   await expect(
     page.getByRole('heading', { name: 'Concurrent saved farm.' }),
   ).toBeVisible()
+  if (
+    !(await page
+      .getByRole('button', { name: 'Edit farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Edit farm', exact: true }).click()
   await expect(page.getByLabel('Farm name')).toHaveValue(
     'Concurrent saved farm',
@@ -1399,9 +1528,7 @@ test('stale drafts require reload and private record links deny other owners', a
   await page.goto('/account')
   await menu(page)
   await page.getByRole('button', { name: /Sign out/ }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   await login(page, other.email)
   await page.goto('/farms')
   await expect(
@@ -1428,6 +1555,12 @@ test('session revocation clears a private draft and does not replay a write', as
   const farm = await created.json()
   await login(page, owner.email)
   await page.goto(`/farms/${farm.id}`)
+  if (
+    !(await page
+      .getByRole('button', { name: 'Edit farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Edit farm', exact: true }).click()
   await page.getByLabel('Farm name').fill('Private revoked draft')
   const admin = await request.post(root + '/auth/login', {
@@ -1460,9 +1593,7 @@ test('session revocation clears a private draft and does not replay a write', as
       writes++
   })
   await page.getByRole('button', { name: 'Save farm', exact: true }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   await expect(page.getByLabel('Farm name')).toHaveCount(0)
   expect(writes).toBe(1)
   expect(
@@ -1529,6 +1660,12 @@ test('owner restores an archived farm and confirms workspace deletion by name', 
   const cultivation = await planted.json()
   await login(page, owner.email)
   await page.goto(farmPath)
+  if (
+    !(await page
+      .getByRole('button', { name: 'Archive farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Archive farm', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText(
     'You can restore this farm later',
@@ -1547,6 +1684,12 @@ test('owner restores an archived farm and confirms workspace deletion by name', 
   await page
     .getByRole('link', { name: 'Synthetic lifecycle farm', exact: true })
     .click()
+  if (
+    !(await page
+      .getByRole('button', { name: 'Restore farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Restore farm', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText(
     'Separately archived crops stay archived',
@@ -1555,6 +1698,12 @@ test('owner restores an archived farm and confirms workspace deletion by name', 
   await expect(
     page.getByRole('button', { name: 'Restore farm', exact: true }),
   ).toBeFocused()
+  if (
+    !(await page
+      .getByRole('button', { name: 'Restore farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Restore farm', exact: true }).click()
   await page
     .getByRole('dialog')
@@ -1574,6 +1723,12 @@ test('owner restores an archived farm and confirms workspace deletion by name', 
     { headers: owner.headers },
   )
   expect((await restored.json()).effective_archived).toBe(false)
+  if (
+    !(await page
+      .getByRole('button', { name: 'Archive farm', exact: true })
+      .isVisible())
+  )
+    await page.getByText('Farm details', { exact: true }).click()
   await page.getByRole('button', { name: 'Archive farm', exact: true }).click()
   await page
     .getByRole('dialog')
@@ -1618,8 +1773,58 @@ test('owner restores an archived farm and confirms workspace deletion by name', 
     page.getByRole('heading', { name: 'Record unavailable' }),
   ).toBeVisible()
   await page.goto('/')
-  await expect(page.getByRole('link', { name: /Add my farm/ })).toBeVisible()
+  await page.getByRole('link', { name: 'My Farms' }).click()
+  await expect(
+    page.getByRole('link', { name: 'Add your first farm' }),
+  ).toBeVisible()
   await expect(
     page.getByRole('combobox', { name: 'Choose your farm' }),
   ).toHaveCount(0)
+})
+
+test('home opens crop chat, repeat field notes and today’s task', async ({
+  page,
+  request,
+}) => {
+  const owner = await actor(request, 'Synthetic home farmer')
+  const crop = await taskCultivation(request, owner)
+  const week = await request.get(root + crop + '/week', {
+    headers: owner.headers,
+  })
+  expect(week.ok()).toBe(true)
+  const today = (await week.json()).starts_on
+  const task = await request.post(root + crop + '/tasks', {
+    headers: owner.headers,
+    data: { title: 'Check the chilli bed', due_date: today },
+  })
+  expect(task.ok()).toBe(true)
+  await login(page, owner.email)
+  await page.getByRole('link', { name: 'Ask Chilli AI', exact: true }).click()
+  await page.getByRole('link', { name: 'Ask about my crop' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Ask Chilli AI about this crop' }),
+  ).toBeVisible()
+  const home = page
+    .getByRole('navigation', { name: 'Crop tools' })
+    .getByRole('link', { name: 'Home', exact: true })
+  await home.click()
+  for (const note of ['Yellow leaves on two plants', 'Checked the other row']) {
+    await page
+      .getByRole('link', { name: 'Add a field note', exact: true })
+      .click()
+    await page.getByLabel('What did you see?').fill(note)
+    await page.getByRole('button', { name: 'Save note' }).click()
+    await expect(page.getByText(note, { exact: true })).toBeVisible()
+    await home.click()
+  }
+  await page.getByRole('link', { name: 'Planner', exact: true }).click()
+  const todayTasks = page.getByRole('region', { name: `Tasks for ${today}` })
+  await expect(todayTasks).toContainText('Check the chilli bed')
+  await todayTasks.getByRole('button', { name: 'Mark done' }).click()
+  await expect(page.getByText('Task completed.', { exact: true })).toBeVisible()
+  await home.click()
+  await expect(
+    page.getByRole('link', { name: 'Ask Chilli AI' }),
+  ).toBeInViewport()
+  await fit(page)
 })

@@ -150,12 +150,16 @@ class SourceVersion(Base):
         return self.pdf.error if self.pdf else None
 
     @property
+    def screening_required(self) -> bool:
+        return bool(self.pdf and self.pdf.screening_required)
+
+    @property
     def retryable(self) -> bool:
         return bool(
             self.pdf
             and self.status == "draft"
             and self.pdf.state == "failed"
-            and self.pdf.error in ("timed_out", "parser_stopped")
+            and self.pdf.error in ("timed_out", "parser_stopped", "scan_unavailable")
             and self.pdf.retry_count < 3
         )
 
@@ -182,9 +186,11 @@ class SourcePdf(Base):
             name="knowledge_pdf_size",
         ),
         CheckConstraint(
-            "(state = 'queued' AND pages IS NULL AND error IS NULL) OR "
-            "(state = 'ready' AND pages IS NOT NULL AND error IS NULL) OR "
-            "(state = 'failed' AND pages IS NULL AND error IS NOT NULL) OR "
+            "(state = 'queued' AND original IS NOT NULL AND pages IS NULL AND error IS NULL) OR "
+            "(state = 'ready' AND original IS NOT NULL AND pages IS NOT NULL AND error IS NULL) OR "
+            "(state = 'failed' AND pages IS NULL AND error IS NOT NULL AND "
+            "((error <> 'scan_rejected' AND original IS NOT NULL) OR "
+            "(error = 'scan_rejected' AND screening_required AND original IS NULL))) OR "
             "(state = 'deleted' AND original IS NULL AND pages IS NULL AND error IS NULL)",
             name="knowledge_pdf_state",
         ),
@@ -199,6 +205,30 @@ class SourcePdf(Base):
     pages: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True), deferred=True)
     error: Mapped[str | None] = mapped_column(String(24))
     retry_count: Mapped[int] = mapped_column(server_default=text("0"))
+    screening_required: Mapped[bool] = mapped_column(server_default=text("false"))
+
+
+class SourceReviewEvent(Base):
+    __tablename__ = "knowledge_source_review_events"
+    __table_args__ = (
+        CheckConstraint("sequence > 0", name="knowledge_source_review_sequence"),
+        CheckConstraint(
+            "event IN ('assigned','revoked','approved','changes_requested')",
+            name="knowledge_source_review_event",
+        ),
+        Index("ix_knowledge_source_review_advisor", "advisor_id", "version_id"),
+    )
+
+    version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("knowledge_source_pdfs.version_id", ondelete="RESTRICT"), primary_key=True
+    )
+    sequence: Mapped[int] = mapped_column(primary_key=True)
+    advisor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    event: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(String(500))
+    request_id: Mapped[str] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class EvaluationDecision(Base):

@@ -259,8 +259,12 @@ def start_chilli_chat(farm_id: UUID, cultivation_id: UUID, db: DB, ids: Principa
 
 
 @router.get(CHILLI_CHATS + "/{chat_id}", response_model=chilli_chat.History)
-def chilli_chat_history(farm_id: UUID, cultivation_id: UUID, chat_id: UUID, db: DB, ids: Principal):
-    return chilli_chat.history(db, ids, farm_id, cultivation_id, chat_id)
+def chilli_chat_history(
+    farm_id: UUID, cultivation_id: UUID, chat_id: UUID, request: Request, db: DB, ids: Principal
+):
+    return chilli_chat.history(
+        db, ids, farm_id, cultivation_id, chat_id, request.app.state.settings
+    )
 
 
 @router.delete(CHILLI_CHATS + "/{chat_id}", status_code=204, dependencies=write)
@@ -361,10 +365,18 @@ def reviewed_source_passage(
     farm_id: UUID,
     cultivation_id: UUID,
     passage_id: UUID,
+    request: Request,
     db: DB,
     ids: Principal,
 ):
-    return rag.source_passage(db, ids, farm_id, cultivation_id, passage_id)
+    return rag.source_passage(
+        db,
+        ids,
+        farm_id,
+        cultivation_id,
+        passage_id,
+        screened_only=request.app.state.settings.app_env == "production",
+    )
 
 
 @router.post(WEEK + "/ask", response_model=planner_chat.Answer, dependencies=write)

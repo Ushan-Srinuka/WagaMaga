@@ -23,6 +23,20 @@ class LocalNurseryReference(BaseModel):
     english_translation: str = Field(min_length=1, max_length=500, pattern=r"^[^\x00]*$")
 
 
+class FarmerAdvisoryQualityReview(BaseModel):
+    """Operator attestation of an independent, versioned evaluation report."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reviewer: str = Field(min_length=1, max_length=160)
+    model: str
+    pdf_checksums: set[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]] = Field(min_length=1)
+    question_count: int = Field(ge=30)
+    recall_at_5: float = Field(ge=0.8, le=1)
+    supported_claim_rate: float = Field(ge=0.9, le=1)
+    unsupported_actionable_treatments: Literal[0]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
@@ -65,6 +79,8 @@ class Settings(BaseSettings):
         default_factory=set
     )
     farmer_advisory_enabled: bool = False
+    farmer_advisory_quality_review: FarmerAdvisoryQualityReview | None = None
+    clamav_port: int | None = Field(default=None, ge=1, le=65535)
     local_nursery_reference: LocalNurseryReference | None = None
     local_chilli_references: dict[Literal["CH-04", "CH-05"], LocalNurseryReference] = Field(
         default_factory=dict

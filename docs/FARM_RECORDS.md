@@ -145,7 +145,7 @@ Decimal coordinates/areas accept JSON numbers or decimal strings and serialize a
 
 ## Implemented screens
 
-FR-D reuses [UI_DESIGN.md](UI_DESIGN.md), the existing session client/theme and shared forms/notices/native dialog. Farmer-only My Farms navigation is available in the workspace and signed-in homepage. The homepage marks Farm Records available, retaining illustrative sample labels and Planned badges on guidance/planning.
+FR-D reuses [UI_DESIGN.md](UI_DESIGN.md), the existing session client/theme and shared forms/notices/native dialog. Farmer-only My Farms navigation is available in the workspace and signed-in homepage. Home links directly to My Farms, the field-note form and the planner. Open Farm details on a farm to edit, archive or view its history.
 
 - My Farms: own active/archived list, pagination, create form, empty state.
 - Farm detail: location/area/timezone, edit/archive, cultivations/list/create.
@@ -153,7 +153,7 @@ FR-D reuses [UI_DESIGN.md](UI_DESIGN.md), the existing session client/theme and 
 - History: owner-only revisions with actor/time/version and archive labels. Archive confirmation explains retained history and blocked activity.
 - Each screen handles loading, empty, validation, unavailable, expired session, inaccessible and stale-version states. Offer reload/review on conflict; no silent overwrite or automatic mutation retry. Clear private screen state on logout/account switch. No fabricated estimates, forecasts or AI advice.
 
-Routes: `/farms`, `/farms/new`, `/farms/:farmId`, `/farms/:farmId/history`, `/farms/:farmId/cultivations/new`, `/farms/:farmId/cultivations/:cultivationId`, its `/history` page and `/observations/:observationId/history` under that cultivation. Farmer route guards improve navigation; the backend remains authoritative. The workspace outlet is keyed by current user/role; resource requests discard late responses after route/account changes. No records or drafts use browser storage.
+Farmer shortcuts include `/field-notes/new`, `/planner` and `/knowledge/chilli/crop`. Each uses the existing owner-only farm and crop lists. Record routes: `/farms`, `/farms/new`, `/farms/:farmId`, `/farms/:farmId/history`, `/farms/:farmId/cultivations/new`, `/farms/:farmId/cultivations/:cultivationId`, its `/history` page and `/observations/:observationId/history` under that cultivation. Farmer route guards improve navigation; the backend remains authoritative. The workspace outlet is keyed by current user/role; resource requests discard late responses after route/account changes. No records or drafts use browser storage.
 
 Fields preserve decimal strings. Observation time entry explicitly uses the device timezone; UTC is sent to the API and timestamps display in the farm timezone. Notes-only edits preserve the original full observation timestamp, including sub-millisecond precision. History uses labelled fields, versions, actor/time and plain-text notes rather than raw JSON. UI crop selection loads up to 100 supported entries, sufficient for the initial single-chilli scope; expanding the catalogue needs its own selector review.
 

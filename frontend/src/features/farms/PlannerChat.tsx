@@ -62,11 +62,11 @@ export default function PlannerChat({
   }
 
   return (
-    <section
-      className="record-inset"
-      aria-label="Ask Chilli AI about this planner"
-    >
-      <h3>Ask Chilli AI about this planner</h3>
+    <section className="record-inset" aria-label="Ask about my tasks">
+      <h3>Ask about my tasks</h3>
+      <p className="muted">
+        Ask what is due, what you missed, or why a task date was suggested.
+      </p>
       <form
         className="record-form"
         onSubmit={(event) => {

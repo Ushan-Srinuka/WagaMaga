@@ -116,6 +116,166 @@ def sample_pdf(labels=("Synthetic nursery notes", "Synthetic field notes"), *, b
     return buffer.getvalue()
 
 
+def test_production_pdf_requires_screening_and_a_version_bound_advisor_decision(
+    account_client, accounts, farm_records, monkeypatch
+):
+    import json
+
+    client = account_client
+    settings = client.app.state.settings
+    advisor_path = "/api/v1/advisor/knowledge"
+    admin = login(client, "admin")
+    farmer = login(client, "farmer")
+    advisor = login(client, "advisor")
+    with accounts[2].begin() as db:
+        db.execute(text("UPDATE users SET role='advisor' WHERE email='second-admin@example.com'"))
+    other_advisor = login(client, "second-admin")
+    content = sample_pdf()
+    metadata = json.dumps(
+        {
+            "publisher": "Synthetic release test",
+            "source_url": "https://example.com/review.pdf",
+            "reuse_basis": "Synthetic test fixture",
+            "language": "en",
+            "crop": "chilli",
+            "region": "Anuradhapura",
+            "published_on": None,
+            "valid_until": None,
+            "access": "farmers",
+        }
+    )
+
+    def upload(*, include_metadata=True):
+        return client.post(
+            PATH + "/pdf",
+            content=content,
+            headers=admin | {"Content-Type": "application/pdf"},
+            params={"title": "Synthetic release PDF"}
+            | ({"metadata": metadata} if include_metadata else {}),
+        )
+
+    legacy = upload().json()
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "clamav_port", None)
+    scores = client.get("/api/v1/admin/knowledge/evaluation/scores/summary", headers=admin)
+    assert scores.status_code == 200
+    assert scores.json()["independent_review_pending"] is True
+    assert not client.get(PATH, headers=admin).json()["upload_available"]
+    assert upload().status_code == 503
+    assert not process_one(accounts[1], settings)
+    monkeypatch.setattr(settings, "clamav_port", 3310)
+    assert upload(include_metadata=False).status_code == 422
+
+    monkeypatch.setattr(processing.clamav, "scan", lambda _original, _port: "scan_rejected")
+    rejected = upload().json()
+    assert process_one(accounts[1], settings)
+    rejected_path = f"{PATH}/{rejected['id']}"
+    assert client.get(rejected_path + "/pages", headers=admin).status_code == 409
+    assert client.post(rejected_path + "/retry-pdf", headers=admin, json={}).status_code == 409
+    with accounts[1].connect() as db:
+        stored = db.execute(
+            text("SELECT original, error FROM knowledge_source_pdfs WHERE version_id=:id"),
+            {"id": rejected["id"]},
+        ).one()
+        assert stored == (None, "scan_rejected")
+
+    screened = upload().json()
+    assert screened["screening_required"] is True
+    version = f"{PATH}/{screened['id']}"
+    assignment = version + "/advisor-review"
+    assigned = f"{advisor_path}/{screened['id']}"
+
+    def change(action, revision):
+        return client.post(
+            f"{version}/{action}", headers=admin, json={"expected_revision": revision}
+        )
+
+    def assign(email, sequence):
+        return client.patch(
+            assignment, headers=admin, json={"expected_sequence": sequence, "advisor_email": email}
+        )
+
+    def decide(headers, sequence, outcome="approved"):
+        return client.post(
+            assigned + "/decision",
+            headers=headers,
+            json={
+                "expected_sequence": sequence,
+                "outcome": outcome,
+                "reason": "Checked synthetic scope.",
+            },
+        )
+
+    monkeypatch.setattr(processing.clamav, "scan", lambda _original, _port: "scan_unavailable")
+    assert process_one(accounts[1], settings)
+    assert client.get(assignment, headers=admin).status_code == 404
+    assert change("review", 1).status_code == 409
+    assert client.post(version + "/retry-pdf", headers=admin, json={}).status_code == 200
+
+    def clean(original, port):
+        assert original == content and port == 3310
+        return None
+
+    monkeypatch.setattr(processing.clamav, "scan", clean)
+    assert process_one(accounts[1], settings)
+    assert not process_one(accounts[1], settings)
+    assert client.get(f"{PATH}/{legacy['id']}/pages", headers=admin).status_code == 409
+    assert change("review", 1).status_code == 409
+    assert client.get(assignment, headers=admin).json() == {"review": None}
+    assert client.get(advisor_path, headers=farmer).status_code == 403
+    assert client.get(advisor_path, headers=admin).status_code == 403
+    assert client.get(assigned + "/pages/1", headers=advisor).status_code == 404
+    assert assign("farmer@example.com", 0).status_code == 422
+    assert assign("advisor@example.com", 0).json()["event"] == "assigned"
+    listing = client.get(advisor_path, headers=advisor)
+    assert listing.status_code == 200, listing.json()
+    assert listing.json()["items"][0]["id"] == screened["id"]
+    assert client.get(assigned + "/pages/1", headers=advisor).json() == {
+        "number": 1,
+        "text": "Synthetic nursery notes",
+        "total": 2,
+    }
+    assert client.get(assigned + "/pages/3", headers=advisor).status_code == 404
+    assert client.get(assigned + "/pages/1", headers=other_advisor).status_code == 404
+    assert client.get(assigned, headers=other_advisor).status_code == 404
+    assert assign(None, 1).json()["event"] == "revoked"
+    assert client.get(assigned, headers=advisor).status_code == 404
+    assert client.get(advisor_path, headers=advisor).json()["items"] == []
+    assert decide(advisor, 1).status_code == 404
+    assert assign("second-admin@example.com", 2).json()["sequence"] == 3
+    assert decide(other_advisor, 1).status_code == 409
+    assert decide(other_advisor, 3).json()["event"] == "approved"
+    assert client.get(advisor_path + "?view=pending", headers=other_advisor).json()["items"] == []
+    [reviewed] = client.get(advisor_path + "?view=reviewed", headers=other_advisor).json()["items"]
+    assert reviewed["id"] == screened["id"] and reviewed["assigned_at"]
+    assert client.get(assigned, headers=other_advisor).json() == reviewed
+    assert decide(other_advisor, 3).status_code == 409
+    assert assign("advisor@example.com", 4).status_code == 409
+    assert change("review", 1).json()["status"] == "reviewed"
+    assert change("publish", 2).json()["status"] == "published"
+    assert client.get(assigned + "/pages/1", headers=other_advisor).status_code == 404
+    farm = farm_records["farmer"]
+    owned = f"/api/v1/farms/{farm['farm']}"
+    location = client.patch(
+        owned,
+        headers=farmer,
+        json={"expected_version": 1, "location": "Synthetic village, Anuradhapura"},
+    )
+    assert location.status_code == 200
+    search = client.post(
+        f"{owned}/cultivations/{farm['cultivation']}/reviewed-sources/search",
+        headers=farmer,
+        json={"question": "nursery"},
+    )
+    assert search.status_code == 200
+    [passage] = search.json()["items"]
+    assert passage["version_id"] == screened["id"]
+    assert passage["source_url"] == "https://example.com/review.pdf"
+    assert passage["reuse_basis"] == "Synthetic test fixture"
+    with pytest.raises(ProgrammingError), accounts[1].begin() as db:
+        db.execute(text("DELETE FROM knowledge_source_review_events"))
+
+
 def test_pdf_upload_requires_processing_then_review(account_client, accounts):
     admin = login(account_client, "admin")
     farmer = login(account_client, "farmer")

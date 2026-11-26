@@ -5,5 +5,5 @@ export function signedInHome(role: Role) {
     ? '/'
     : role === 'administrator'
       ? '/admin/overview'
-      : '/account'
+      : '/advisor'
 }

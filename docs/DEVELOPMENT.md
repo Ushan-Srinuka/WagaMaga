@@ -1,6 +1,6 @@
 # Development guide
 
-Status: M0, UM1 accounts, Farm Records, weekly planning and assigned advisor review, live farm forecasts, automatic weather notices, date reviews, website support and the chilli knowledge workflows are implemented locally. Current schema is `0028_chilli_jobs`. TESTING.md records actual outcomes.
+M0, UM1 accounts, Farm Records, weekly planning and assigned advisor review, live farm forecasts, automatic weather notices, date reviews, website support and the chilli knowledge workflows are implemented locally. Current schema is `0029_screened_knowledge`. [Testing guide](TESTING.md)
 
 Sign in as a farmer and open **Chilli questions** to read cited answers about nursery setup, irrigation, soil testing and two published studies. The public crop-page answers run locally. The existing `GEMINI_API_KEY` enables optional selection from the four published study summaries, with a local fallback. Use the [local walkthrough](KNOWLEDGE_EVALUATION.md#portfolio-demo) to exercise the separate fictional PDF workflow.
 
@@ -135,7 +135,7 @@ FR-D use: start PostgreSQL/API/frontend with the existing setup above, register/
 
 Farm lifecycle follow-up: run `.\scripts\uv.ps1 run alembic upgrade head` before starting API/worker. Existing farm records/history are preserved. In My Farms choose Farm status → Archived, open a farm and choose Restore farm or Delete farm. Restore returns it to active use while independently archived crops remain archived. Delete requires the current farm name and removes access from the workspace; stored historical data is retained and the UI cannot undo deletion. This is not a data-erasure tool. Migration downgrade refuses while lifecycle evidence exists. Test rebuilds must remain on disposable `_test` databases.
 
-Farmer sign-in now returns to `http://127.0.0.1:5173/`. The website header has My Farms and Add Farm, while the hero action bar offers Add my farm for a new farmer or a private farm selector and next crop/observation action for returning farmers. Choose your own farm name, district and village/town, then add a crop/planting date/area and an observation. There is no separate farmer dashboard or fixed mobile bottom navigation. Advisors sign in to My Account and administrators to Admin Overview and cannot access private farmer records. A farmer visiting the old `/dashboard` URL is redirected home.
+Farmer sign-in now returns to `http://127.0.0.1:5173/`. The website header has My Farms and Add Farm, while the hero action bar offers Add my farm for a new farmer or a private farm selector and next crop/observation action for returning farmers. Choose your own farm name, district and village/town, then add a crop/planting date/area and an observation. There is no separate farmer dashboard or fixed mobile bottom navigation. Advisors sign in to the Advisor inbox and administrators to Admin Overview and cannot access private farmer records. A farmer visiting the old `/dashboard` URL is redirected home.
 
 Choose Describe the location myself for an existing/custom location. District selection has no default and is not a guidance-eligibility check; the existing API stores a label, not structured administrative fields. Exact coordinates and additional area/timezone are collapsed options. Use my current location only at the farm, approve browser permission if desired, review the result and save normally. Permission denial, missing location support and timeouts do not prevent manual entry or omission. Browser geolocation requires a secure context: loopback development works in supported browsers, while deployed use requires HTTPS. There is no new API key or map provider. The initial guidance pilot remains chilli/Anuradhapura pending agricultural validation.
 
@@ -161,7 +161,7 @@ Remove-Item Env:E2E_BUILT_FRONTEND
 
 ## Help and support - 19 November 2026
 
-Admin Overview follow-up (D30): administrator login now opens `http://127.0.0.1:5173/admin/overview`, showing account/farm/cultivation/support count summaries. Farmers still open the website landing page and advisors My Account. Admin account navigation and the signed-in website header link to Overview. Open a current farmer in User management to see the count-only Farm record summary; no farm names/locations/notes are exposed. Existing farm endpoints still reject administrators. Report views are recorded in account audit history; audit failure prevents a successful report. No additional configuration or migration is needed after `0007_support`. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md) for definitions and [TESTING.md](TESTING.md) for evidence.
+Admin Overview follow-up (D30): administrator login now opens `http://127.0.0.1:5173/admin/overview`, showing account/farm/cultivation/support count summaries. Farmers still open the website landing page and advisors the Advisor inbox. Admin account navigation and the signed-in website header link to Overview. Open a current farmer in User management to see the count-only Farm record summary; no farm names/locations/notes are exposed. Existing farm endpoints still reject administrators. Report views are recorded in account audit history; audit failure prevents a successful report. No additional configuration or migration is needed after `0007_support`. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md) for definitions and [TESTING.md](TESTING.md) for evidence.
 
 Run the normal migration command before API/worker startup. Open `http://127.0.0.1:5173/help` for public FAQs and contact. Signed-in farmers use `/support` or `/support/new`; administrators use `/admin/support`. Submitting shares only the typed support conversation, not private farm records. In-progress/resolved states and generic in-app notifications work without an email provider. Account recovery, attachments and live chat remain pending.
 
@@ -331,6 +331,8 @@ APP_ENV, database, storage, CORS, provider and AUTH settings are reflected in Se
 | `MODEL_PROVIDER`, `MODEL_NAME`, `EMBEDDING_MODEL` | Versioned AI configuration, introduced with advisory work |
 | `MODEL_API_KEY` | Server-only credential if required by the chosen provider |
 | `OPEN_METEO_API_KEY`, `OPEN_METEO_NONCOMMERCIAL` | Optional customer key or explicit keyless non-commercial production use |
+| `CLAMAV_PORT` | Optional loopback scanner for production PDF intake. Configure the same port for API and worker. |
+| `FARMER_ADVISORY_QUALITY_REVIEW` | Operator attestation of the independent evaluation. Required alongside the production release toggle. |
 
 Do not put credentials in frontend variables. Do not require model/weather keys to start the foundation or use manual farm management. Configure database/bootstrap credentials separately from the normal app role.
 

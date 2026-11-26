@@ -98,16 +98,34 @@ export default function AccountShell() {
             )}
             {user?.role === 'farmer' && (
               <NavLink to="/knowledge/chilli" onClick={() => setMenu(false)}>
-                Chilli questions
+                Ask Chilli AI
               </NavLink>
+            )}
+            {user?.role === 'farmer' && (
+              <>
+                <NavLink to="/field-notes/new" onClick={() => setMenu(false)}>
+                  Add a field note
+                </NavLink>
+                <NavLink to="/planner" onClick={() => setMenu(false)}>
+                  Planner
+                </NavLink>
+              </>
             )}
             <NavLink to="/account" onClick={() => setMenu(false)}>
               <span aria-hidden="true">◉</span> My account
             </NavLink>
             {user?.role === 'advisor' && (
-              <NavLink to="/advisor/cases" onClick={() => setMenu(false)}>
-                Assigned plan reviews
-              </NavLink>
+              <>
+                <NavLink end to="/advisor" onClick={() => setMenu(false)}>
+                  Advisor inbox
+                </NavLink>
+                <NavLink to="/advisor/cases" onClick={() => setMenu(false)}>
+                  Assigned plan reviews
+                </NavLink>
+                <NavLink to="/advisor/knowledge" onClick={() => setMenu(false)}>
+                  Knowledge review
+                </NavLink>
+              </>
             )}
             {user?.role === 'farmer' && (
               <NavLink to="/support" onClick={() => setMenu(false)}>
@@ -151,11 +169,7 @@ export default function AccountShell() {
           </nav>
           <div className="sidebar-bottom">
             <span className="role-badge">{user?.role}</span>
-            <p>
-              A considered place
-              <br />
-              to begin.
-            </p>
+
             <button disabled={busy} onClick={logout}>
               {busy ? 'Signing out…' : 'Sign out'}{' '}
               <span aria-hidden="true">↗</span>

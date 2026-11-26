@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import Field from '../../components/Field'
 import Notice from '../../components/Notice'
 import type {
@@ -60,6 +60,10 @@ export default function TaskPanel({
   review: () => void
 }) {
   const filterId = useId()
+  const addTask = useRef<HTMLButtonElement>(null)
+  const taskForm = useRef<HTMLFormElement>(null)
+  const taskTitle = useRef<HTMLInputElement>(null)
+  const restoreAddFocus = useRef(false)
   const [filter, setFilter] = useState<TaskStatus | 'all'>('pending')
   const [page, setPage] = useState(1)
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -81,7 +85,24 @@ export default function TaskPanel({
   const save = useSave()
   const canChange = !archived && !save.busy && !save.blocked
   const taskEditorOpen = Boolean(draft || missedTaskId)
+  const creating = !archived && Boolean(draft && !draft.task)
   const farmToday = tasks.data?.farm_today
+
+  useEffect(() => {
+    if (creating) {
+      taskTitle.current?.focus({ preventScroll: true })
+      const reduceMotion = window.matchMedia?.(
+        '(prefers-reduced-motion: reduce)',
+      ).matches
+      taskForm.current?.scrollIntoView?.({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+      })
+    } else if (restoreAddFocus.current) {
+      restoreAddFocus.current = false
+      addTask.current?.focus()
+    }
+  }, [creating])
 
   function reloadTasks() {
     setPage(1)
@@ -125,32 +146,93 @@ export default function TaskPanel({
     )
   }
 
+  const saveError = <SaveError {...save} create={creating} review={review} />
+  const editor = !archived && draft && (
+    <form ref={taskForm} onSubmit={submit} className="record-stage-form">
+      {draft.weatherReview && (
+        <p>
+          Sample rain falls on the saved due date. Keep it or choose a different
+          date.
+        </p>
+      )}
+      <div className="record-form-grid">
+        <Field
+          label="Task title"
+          ref={taskTitle}
+          value={draft.title}
+          maxLength={120}
+          required
+          disabled={save.busy}
+          onChange={(event) =>
+            setDraft({ ...draft, title: event.target.value })
+          }
+        />
+        <Field
+          label="Due date"
+          type="date"
+          value={draft.due_date}
+          max="9999-12-31"
+          required
+          autoFocus={draft.weatherReview}
+          disabled={save.busy}
+          onChange={(event) =>
+            setDraft({ ...draft, due_date: event.target.value })
+          }
+        />
+      </div>
+      <div className="record-toolbar">
+        <button
+          className="primary"
+          disabled={!canChange || !draft.title.trim() || !draft.due_date}
+        >
+          {save.busy ? 'Saving…' : 'Save task'}
+        </button>
+        <button
+          type="button"
+          disabled={save.busy}
+          onClick={() => {
+            if (draft.weatherReview && !save.blocked)
+              setNotice('Task date kept.')
+            restoreAddFocus.current = creating
+            setDraft(null)
+            if (!save.blocked) save.reset()
+          }}
+        >
+          {draft.weatherReview && !save.blocked
+            ? 'Keep task date'
+            : 'Discard draft'}
+        </button>
+      </div>
+    </form>
+  )
+
   return (
     <section className="panel" aria-labelledby="tasks-heading">
       <div className="record-card-top">
         <h2 id="tasks-heading">Farm tasks</h2>
-        {!archived && !draft && (
-          <button
-            className="primary"
-            disabled={!canChange || !tasks.data || taskEditorOpen}
-            onClick={() => setDraft({ title: '', due_date: '' })}
-          >
-            Add task
-          </button>
-        )}
+        <div className="button-row">
+          <a className="record-link" href="#week-heading">
+            This week
+          </a>
+          {!archived && (!draft || creating) && (
+            <button
+              ref={addTask}
+              type="button"
+              className="primary"
+              aria-expanded={creating}
+              disabled={!canChange || !tasks.data || taskEditorOpen}
+              onClick={() => setDraft({ title: '', due_date: '' })}
+            >
+              Add task
+            </button>
+          )}
+        </div>
       </div>
+      {saveError}
+      {creating && editor}
+      {notice && <Notice success message={notice} />}
       {archived && (
         <p className="muted">Archived cultivation. Tasks are read only.</p>
-      )}
-      {chilli && (
-        <PlannerChat
-          path={cultivationPath}
-          planPath={planPath}
-          timezone={timezone}
-          archived={archived}
-          blocked={taskEditorOpen || save.busy}
-          changed={reloadTasks}
-        />
       )}
       <WeeklyPlanner
         path={cultivationPath + '/week'}
@@ -159,8 +241,9 @@ export default function TaskPanel({
         timezone={timezone}
         revision={`${liveWeather.data?.status}:${liveWeather.data?.forecast?.fetched_at}:${taskRevision}`}
         archived={archived}
-        blocked={taskEditorOpen || save.busy}
+        blocked={taskEditorOpen || save.busy || save.blocked}
         changed={reloadTasks}
+        complete={(task) => close(task, 'completed')}
         openTask={(id) => {
           setFocusedTaskId(id)
           setPage(1)
@@ -169,17 +252,30 @@ export default function TaskPanel({
             ?.scrollIntoView?.({ block: 'start' })
         }}
       />
-      <LiveWeather record={liveWeather} path={livePath} farmPath={farmPath} />
-      <WeatherAlerts
-        path={livePath + '/alerts'}
-        timezone={timezone}
-        revision={`${liveWeather.data?.status}:${liveWeather.data?.forecast?.fetched_at}:${taskRevision}`}
-        onRescheduled={() => {
-          setFilter('pending')
-          reloadTasks()
-        }}
-        onRuleChanged={() => setTaskRevision((value) => value + 1)}
-      />
+      <details className="panel">
+        <summary>Weather and alerts</summary>
+        <LiveWeather record={liveWeather} path={livePath} farmPath={farmPath} />
+        <WeatherAlerts
+          path={livePath + '/alerts'}
+          timezone={timezone}
+          revision={`${liveWeather.data?.status}:${liveWeather.data?.forecast?.fetched_at}:${taskRevision}`}
+          onRescheduled={() => {
+            setFilter('pending')
+            reloadTasks()
+          }}
+          onRuleChanged={() => setTaskRevision((value) => value + 1)}
+        />
+      </details>
+      {chilli && (
+        <PlannerChat
+          path={cultivationPath}
+          planPath={planPath}
+          timezone={timezone}
+          archived={archived}
+          blocked={taskEditorOpen || save.busy || save.blocked}
+          changed={reloadTasks}
+        />
+      )}
       {import.meta.env.DEV && (
         <div>
           <button
@@ -198,68 +294,7 @@ export default function TaskPanel({
           )}
         </div>
       )}
-      {notice && <Notice success message={notice} />}
-      <SaveError
-        {...save}
-        create={Boolean(draft && !draft.task)}
-        review={review}
-      />
-      {!archived && draft && (
-        <form onSubmit={submit} className="record-stage-form">
-          {draft.weatherReview && (
-            <p>
-              Sample rain falls on the saved due date. Keep it or choose a
-              different date.
-            </p>
-          )}
-          <div className="record-form-grid">
-            <Field
-              label="Task title"
-              value={draft.title}
-              maxLength={120}
-              required
-              disabled={save.busy}
-              onChange={(event) =>
-                setDraft({ ...draft, title: event.target.value })
-              }
-            />
-            <Field
-              label="Due date"
-              type="date"
-              value={draft.due_date}
-              max="9999-12-31"
-              required
-              autoFocus={draft.weatherReview}
-              disabled={save.busy}
-              onChange={(event) =>
-                setDraft({ ...draft, due_date: event.target.value })
-              }
-            />
-          </div>
-          <div className="record-toolbar">
-            <button
-              className="primary"
-              disabled={!canChange || !draft.title.trim() || !draft.due_date}
-            >
-              {save.busy ? 'Saving…' : 'Save task'}
-            </button>
-            <button
-              type="button"
-              disabled={save.busy}
-              onClick={() => {
-                if (draft.weatherReview && !save.blocked)
-                  setNotice('Task date kept.')
-                setDraft(null)
-                if (!save.blocked) save.reset()
-              }}
-            >
-              {draft.weatherReview && !save.blocked
-                ? 'Keep task date'
-                : 'Discard draft'}
-            </button>
-          </div>
-        </form>
-      )}
+      {!creating && editor}
       {focusedTaskId && (
         <button
           type="button"
@@ -373,7 +408,7 @@ export default function TaskPanel({
                       disabled={!canChange || taskEditorOpen}
                       onClick={() => close(task, 'completed')}
                     >
-                      Mark complete
+                      Mark done
                     </button>
                     <button
                       className="danger-action"

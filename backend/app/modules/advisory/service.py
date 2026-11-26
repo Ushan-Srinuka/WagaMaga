@@ -19,6 +19,7 @@ from app.modules.notifications.service import create_notification
 from app.modules.weather import live
 
 Outcome = Literal["cleared", "declined", "changes_requested"]
+ReviewView = Literal["all", "pending", "reviewed"]
 
 
 class Binding(dto.VersionCommand):
@@ -46,6 +47,7 @@ class DecisionOut(BaseModel):
 
 
 class CaseOut(dto.DateReviewOut):
+    assigned_at: datetime
     evidence: weekly.Evidence
     review: DecisionOut | None
     can_review: bool
@@ -236,6 +238,7 @@ def case_view(db, plan):
     task = weekly.read_task(db, cultivation.id, plan.target_task_id)
     parent = db.get(TaskPlan, plan.revises_plan_id) if plan.revises_plan_id else None
     return CaseOut(
+        assigned_at=db.get(AdvisorCase, plan.id).submitted_at,
         id=plan.id,
         version=plan.version,
         action_hash=plan.action_hash,
@@ -256,9 +259,20 @@ def case_view(db, plan):
 
 def inbox(db, ids, query):
     actor = advisor_actor(db, ids)
-    statement = assigned_plans(actor.id, live.now()).order_by(
-        TaskPlan.created_at.desc(), TaskPlan.id.desc()
-    )
+    stamp = live.now()
+    statement = assigned_plans(actor.id, stamp)
+    if query.view == "pending":
+        statement = statement.where(
+            ~select(AdvisorDecision.plan_id).where(AdvisorDecision.plan_id == TaskPlan.id).exists()
+        )
+    if query.view == "reviewed":
+        statement = (
+            statement.join(AdvisorDecision, AdvisorDecision.plan_id == TaskPlan.id)
+            .where(AdvisorDecision.decided_at >= stamp - timedelta(days=30))
+            .order_by(AdvisorDecision.decided_at.desc(), TaskPlan.id.desc())
+        )
+        return farms.paged(db, statement, query, lambda plan: case_view(db, plan))
+    statement = statement.order_by(TaskPlan.created_at.desc(), TaskPlan.id.desc())
     return farms.paged(db, statement, query, lambda plan: case_view(db, plan))
 
 

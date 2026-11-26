@@ -1,174 +1,123 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
-import type { Cultivation, Farm, Observation, Page } from '../../lib/farms'
+import { Link, Navigate } from 'react-router'
+import {
+  cropName,
+  type Crop,
+  type Cultivation,
+  type Farm,
+  type Page,
+} from '../../lib/farms'
+import { Pagination, ReadState } from '../farms/RecordUI'
 import { useRecord } from '../farms/record-hooks'
 
-export default function FarmActionBar() {
-  const farms = useRecord<Page<Farm>>('/farms?status=active&page_size=100')
-  const [selected, setSelected] = useState('')
+type FarmAction = 'note' | 'planner' | 'chat'
+const titles = {
+  note: 'Add a field note',
+  planner: 'Planner',
+  chat: 'Ask about my crop',
+}
+
+export default function FarmActionBar({ action }: { action: FarmAction }) {
+  const [page, setPage] = useState(1)
+  const farms = useRecord<Page<Farm>>(`/farms?status=active&page=${page}`)
+  const [chosen, setChosen] = useState<Farm | null>(null)
   const farm =
-    farms.data?.items.find((item) => item.id === selected) ??
-    farms.data?.items[0]
+    chosen ?? (farms.data?.total === 1 ? farms.data.items[0] : undefined)
   return (
-    <div className="home-farm-start" id="farm-start">
-      <p className="home-launcher-caption">Your farm workspace</p>
+    <div className="farm-records">
+      <Link to="/">← Home</Link>
+      <h1>{titles[action]}</h1>
       {!farms.data ? (
-        <div className="home-launcher home-launcher-state">
-          {farms.loading ? (
-            <p role="status">Finding your farm records…</p>
-          ) : (
-            <>
-              <p role="alert">
-                Your farm list could not be loaded. Try again or open your
-                records.
-              </p>
-              <button type="button" onClick={farms.reload}>
-                Try again
-              </button>
-              <Link to="/farms">Open farm records</Link>
-            </>
-          )}
-        </div>
+        <ReadState {...farms} retry={farms.reload} />
       ) : farm ? (
-        <div className="home-launcher">
-          <div className="home-launcher-field">
-            <label htmlFor="home-farm-select">Choose your farm</label>
-            <select
-              id="home-farm-select"
-              value={farm.id}
-              onChange={(event) => setSelected(event.target.value)}
-            >
-              {farms.data.items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <span className="home-launcher-detail">{farm.location}</span>
-          </div>
-          <FarmContinuation key={farm.id} farm={farm} />
-        </div>
+        <>
+          {chosen && (
+            <button onClick={() => setChosen(null)}>Change farm</button>
+          )}
+          <CropChoices key={farm.id} farm={farm} action={action} />
+        </>
+      ) : farms.data.total === 0 ? (
+        <section className="panel">
+          <p>Add a farm and a crop to get started.</p>
+          <Link to="/farms/new">Add your first farm</Link>
+        </section>
       ) : (
-        <FirstFarm signedIn />
+        <section className="panel">
+          <h2>Choose your farm</h2>
+          <ul className="record-rows">
+            {farms.data.items.map((item) => (
+              <li key={item.id}>
+                <button onClick={() => setChosen(item)}>
+                  {item.name} · {item.location}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {farms.data.total > farms.data.page_size && (
+            <Pagination page={page} change={setPage} result={farms.data} />
+          )}
+        </section>
       )}
-      <div className="home-launcher-links">
-        <Link to="/farms">
-          View all farm records <span aria-hidden="true">↗</span>
-        </Link>
-        {farm ? (
-          <Link to="/farms/new">＋ Add another farm</Link>
-        ) : (
-          <Link to="/farms?status=archived">View archived farms</Link>
-        )}
-        {farms.data && farms.data.total > farms.data.items.length && (
-          <span>
-            Showing the first {farms.data.items.length} active farms. View all
-            records for more.
-          </span>
-        )}
-      </div>
     </div>
   )
 }
 
-function FarmContinuation({ farm }: { farm: Farm }) {
-  const crops = useRecord<Page<Cultivation>>(
-    `/farms/${farm.id}/cultivations?status=active&page_size=1`,
+function CropChoices({ farm, action }: { farm: Farm; action: FarmAction }) {
+  const [page, setPage] = useState(1)
+  const types = useRecord<Page<Crop>>('/crop-types?page_size=100')
+  const path = `/farms/${farm.id}/cultivations`
+  const records = useRecord<Page<Cultivation>>(
+    `${path}?status=active&page=${page}`,
   )
-  const crop = crops.data?.items[0]
-  const notes = useRecord<Page<Observation>>(
-    crop ? `/cultivations/${crop.id}/observations?page_size=1` : null,
+  if (!records.data || !types.data)
+    return (
+      <ReadState
+        loading={records.loading || types.loading}
+        error={records.error ?? types.error}
+        retry={() => {
+          records.reload()
+          types.reload()
+        }}
+      />
+    )
+  const chilliId = types.data.items.find((type) => type.code === 'chilli')?.id
+  const choices = records.data.items.filter(
+    (crop) => action !== 'chat' || crop.crop_type_id === chilliId,
   )
-  const pending = crops.loading || notes.loading
-  const failed = crops.error || notes.error
-  const ready = Boolean(crops.data && (!crop || notes.data))
-  const hasNotes = Boolean(notes.data?.total)
-  const cropPath = crop ? `/farms/${farm.id}/cultivations/${crop.id}` : ''
-  const target = !ready
-    ? `/farms/${farm.id}`
-    : !crop
-      ? `/farms/${farm.id}/cultivations/new`
-      : `${cropPath}${hasNotes ? '' : '?observe=1'}`
-  const label = !ready
-    ? 'Open farm'
-    : !crop
-      ? 'Add what you are growing'
-      : !hasNotes
-        ? 'Record first observation'
-        : 'Open crop records'
+  function destination(crop: Cultivation) {
+    const query = action === 'note' ? 'view=notes&observe=1' : `view=${action}`
+    return `${path}/${crop.id}?${query}`
+  }
+  if (records.data.total === 1 && choices.length === 1)
+    return <Navigate replace to={destination(choices[0])} />
   return (
-    <>
-      <div className="home-launcher-field home-launcher-next">
-        <span className="home-launcher-label">Your next step</span>
-        <strong>
-          {!ready
-            ? 'Your farm records'
-            : !crop
-              ? 'What are you growing?'
-              : !hasNotes
-                ? 'Start your field notes'
-                : 'Pick up where you left off'}
-        </strong>
-        {failed ? (
-          <span role="alert" className="home-launcher-detail">
-            Next step unavailable.{' '}
-            <button
-              type="button"
-              className="home-inline-retry"
-              onClick={() => {
-                crops.reload()
-                notes.reload()
-              }}
-            >
-              Retry
-            </button>
-          </span>
-        ) : (
-          <span
-            className="home-launcher-detail"
-            role={pending ? 'status' : undefined}
-          >
-            {pending
-              ? 'Checking saved records…'
-              : !crop
-                ? 'Add a crop, planting date and planted area.'
-                : !hasNotes
-                  ? 'Add a note about what you see in your field.'
-                  : `Planting date ${crop.planting_date} · Your saved observations`}
-          </span>
-        )}
-      </div>
-      <Link className="home-launcher-button" to={target}>
-        {label} <span aria-hidden="true">↗</span>
-      </Link>
-    </>
-  )
-}
-
-export function FirstFarm({ signedIn = false }: { signedIn?: boolean }) {
-  return (
-    <div className="home-launcher">
-      <div className="home-launcher-field">
-        <span className="home-launcher-label">Start with your farm</span>
-        <strong>Add your first farm</strong>
-        <span className="home-launcher-detail">
-          Your own farm name and village. No coordinates needed.
-        </span>
-      </div>
-      <div className="home-launcher-field home-launcher-next">
-        <span className="home-launcher-label">Then make it yours</span>
-        <strong>Crops &amp; field notes</strong>
-        <span className="home-launcher-detail">
-          Keep your planting details and observations together.
-        </span>
-      </div>
-      <Link
-        className="home-launcher-button"
-        to={signedIn ? '/farms/new' : '/register'}
-      >
-        {signedIn ? 'Add my farm' : 'Get started'}{' '}
-        <span aria-hidden="true">↗</span>
-      </Link>
-    </div>
+    <section className="panel">
+      <h2>{farm.name}</h2>
+      {choices.length ? (
+        <>
+          <p>Choose {action === 'chat' ? 'a chilli crop' : 'your crop'}.</p>
+          <ul className="record-rows">
+            {choices.map((crop) => (
+              <li key={crop.id}>
+                <Link to={destination(crop)}>
+                  {cropName(crop.crop_type_id, types.data!.items)} · planted{' '}
+                  {crop.planting_date}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p>
+          {action === 'chat'
+            ? 'No active chilli crops on this page.'
+            : 'No active crops on this page.'}
+        </p>
+      )}
+      {records.data.total > records.data.page_size && (
+        <Pagination result={records.data} page={page} change={setPage} />
+      )}
+      <Link to={path + '/new'}>Add a crop</Link>
+    </section>
   )
 }

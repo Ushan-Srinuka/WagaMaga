@@ -25,7 +25,7 @@ Included: local synthetic accounts, sessions and revocation, protected account e
 ## Implemented user journeys
 
 1. Register with display name, email, password and password confirmation. The server accepts only account fields and always assigns farmer; reject attempts to supply role, status or ownership fields. Do not automatically log in after registration. Use a generic acknowledgement for both a new account and an existing email, without saying an email was sent. Continue to login.
-2. Login with email/password. Return the same safe failure for an unknown email, wrong password or disabled account. Farmers return to the landing page, which offers farm entry in its header/hero, My account, Notifications and the unread count. Advisors open My Account and administrators Admin Overview. No empty farm or AI dashboard is introduced.
+2. Login with email/password. Return the same safe failure for an unknown email, wrong password or disabled account. Farmers return to Home, or directly to Chilli AI after choosing Log in to ask. Advisors open the Advisor inbox and administrators open Admin Overview.
 3. Reload a protected page. Restore the session through a rotated refresh cookie before rendering private account data. An expired/revoked session returns the user to login with a clear explanation.
 4. Edit the signed-in user's display name or change the password after verifying the current password. The new password uses the signup rule; other sessions are revoked and this session remains active. Email changes and recovery remain unavailable.
 5. An administrator searches a bounded, paginated user list, filters role/status, opens an account and confirms a role/status change or permanent removal with a reason. Removal scrubs sign-in identifiers/credentials, revokes sessions, leaves an audit-preserving tombstone and is excluded from ordinary account results. The deleted filter shows only scrubbed tombstones. Self-removal and removal that would eliminate the final active administrator are rejected. Show stale-write conflicts and refresh the record before retrying.
@@ -33,7 +33,7 @@ Included: local synthetic accounts, sessions and revocation, protected account e
 
 ## Permission matrix
 
-D30 follow-up: administrator login opens Admin Overview, farmers return to the website landing page and advisors open My Account. Dedicated reporting endpoints allow audited count-only aggregate/per-farmer metadata. This adds no general private-record permission: farm names, coordinates, observations, chats and owner actions remain inaccessible to administrators. Current farmer account pages show only record counts, excluding workspace-deleted farms. [ADMIN_REPORTING.md](ADMIN_REPORTING.md) defines the scope.
+D30 follow-up: administrator login opens Admin Overview, farmers return to the website landing page and advisors open the Advisor inbox. Dedicated reporting endpoints allow audited count-only aggregate/per-farmer metadata. This adds no general private-record permission: farm names, coordinates, observations, chats and owner actions remain inaccessible to administrators. Current farmer account pages show only record counts, excluding workspace-deleted farms. [ADMIN_REPORTING.md](ADMIN_REPORTING.md) defines the scope.
 
 Website-support follow-up (D29): Help is public. Farmers can create/read/reply/resolve/reopen their own submitted requests; administrators can handle those conversations through Support inbox, but cannot open farms or private AI chats. Advisors are excluded from both support APIs. Generic support notices remain recipient-owned. Public contact email is separately configured, and support does not reset passwords or replace identity verification. See [SUPPORT.md](SUPPORT.md).
 
@@ -130,16 +130,16 @@ The initial warm green direction was selected on 16 November 2026. On 17 Novembe
 
 | Screen | Layout and content |
 | --- | --- |
-| `/` | Public opening homepage, product introduction, clearly labelled future capabilities and login/register links; no session/API dependency |
+| `/` | Short introduction to Chilli AI, sign-in, registration and Help. Home restores the session to show role-specific actions. |
 | `/login` | Simple brand header, centered form, email/password, show-password control, login button and register link |
-| `/` after farmer login | Public website landing-page header/hero with farmer-only farm selection and direct add/continue actions. Other roles open `/account`; no farmer requests are issued for them. The old farmer `/dashboard` URL redirects home. |
+| `/` after farmer login | Home offers Ask Chilli AI, Add a field note, My Farms and Planner. Staff see their own workspace entry. The old farmer `/dashboard` URL redirects home. |
 | `/register` | Matching form with display name/email/password/confirmation and clear farmer-only registration wording |
 | `/account` | Responsive signed-in header/menu, own name/email/role/status, editable display name, current-password-confirmed password change and sign-out action |
 | `/admin/users` | Reusable app shell, user count for the filtered list, search, role/status filters including removed records and paginated rows; stacked account cards on mobile |
 | `/admin/users/:id` | Account detail with role/status/removal controls, impact explanation and confirmation dialog; removed accounts display scrubbed tombstone state; no private farming content |
 | Shared states | Session restoration, loading, empty results, validation failure, generic login failure, rate limit, access denied, stale write, offline/retry and session expiry |
 
-On desktop, the signed-in shell uses a compact header and small side navigation containing only Account and, for administrators, Users. On mobile use an accessible menu; forms fit the viewport and content reflows without horizontal page scrolling. Do not add placeholder farm/AI navigation. Preserve the existing M0 health screen as a developer connection page or test route; it is not the signed-in product home.
+The signed-in shell uses a compact header and role-specific navigation. On mobile use an accessible menu; forms fit the viewport and content reflows without horizontal page scrolling. Do not add placeholder farm/AI navigation. Preserve the existing M0 health screen as a developer connection page or test route; it is not the signed-in product home.
 
 Use visible labels, password-manager autocomplete, keyboard focus, text with status colours, announced validation errors and a dialog that traps/restores focus. A submitting form prevents accidental duplicate actions. Confirmations explain session revocation; removal explicitly explains identity scrubbing and irreversibility. Version conflicts retain context and require a fresh decision. Do not show raw API traces or conflate a disabled account with a removed one.
 

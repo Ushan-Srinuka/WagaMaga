@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import PdfAttribution, { type PdfProvenance } from './PdfAttribution'
 import { Link } from 'react-router'
 import Notice from '../../components/Notice'
 import { farmWrite } from '../../lib/farms'
@@ -12,7 +13,7 @@ const localPath = `${chilliPath}/local`
 const pageContent = {
   research: {
     path: `${chilliPath}/research`,
-    heading: 'Chilli questions',
+    heading: 'Ask Chilli AI',
     intro:
       'Find answers about nursery setup, irrigation and soil testing from Sri Lankan sources.',
     help: 'Try an example below. The answers provide general information about chilli cultivation.',
@@ -45,11 +46,12 @@ type Answer =
       answer: string
       case_id?: string
       reference_only?: boolean
-      citation: {
+      citation: PdfProvenance & {
         title: string
         version_id: string
         number: number
         excerpt: string
+        publisher?: string | null
       }
     }
   | {
@@ -121,25 +123,19 @@ export default function ChilliQuestionsPage({
   return (
     <>
       <div className="page-intro">
+        <Link className="back-link" to="/">
+          ← Home
+        </Link>
         <h1>{heading}</h1>
         <p>{intro}</p>
         {mode === 'pilot' && (
           <p>Scope · Chilli cultivations in Anuradhapura District.</p>
         )}
         {mode !== 'research' && (
-          <Link to={chilliPath}>Back to Chilli questions</Link>
+          <Link to={chilliPath}>Back to Ask Chilli AI</Link>
         )}
         {mode === 'research' && (
-          <div className="button-row">
-            <Link to={guidancePath}>Chilli farm guidance</Link>
-            <Link to="/farms">Ask about a chilli cultivation’s planner</Link>
-            {import.meta.env.DEV && (
-              <>
-                <Link to={localPath}>Search reviewed excerpts locally</Link>
-                <Link to={demoPath}>Try the local demo</Link>
-              </>
-            )}
-          </div>
+          <Link to="/knowledge/chilli/crop">Ask about my crop</Link>
         )}
       </div>
       <section className="panel" aria-label="Chilli answers">
@@ -176,7 +172,9 @@ export default function ChilliQuestionsPage({
             {typed ? (
               <>
                 <div className="field">
-                  <label htmlFor="chilli-question">Type your question</label>
+                  <label htmlFor="chilli-question">
+                    What would you like to ask about chilli?
+                  </label>
                   <input
                     id="chilli-question"
                     type="text"
@@ -188,22 +186,6 @@ export default function ChilliQuestionsPage({
                     onChange={(event) => updateQuestion(event.target.value)}
                   />
                   <small id="typed-question-help">{help}</small>
-                </div>
-                <div
-                  className="button-row"
-                  role="group"
-                  aria-label="Example questions"
-                >
-                  {record.data.cases.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      disabled={save.busy}
-                      onClick={() => updateQuestion(item.question)}
-                    >
-                      {item.question}
-                    </button>
-                  ))}
                 </div>
               </>
             ) : (
@@ -227,19 +209,41 @@ export default function ChilliQuestionsPage({
                 </select>
               </div>
             )}
-            <button disabled={!canSubmit}>Find an answer</button>
+            <button className="primary" disabled={!canSubmit}>
+              Find an answer
+            </button>
+            {typed && (
+              <div
+                className="button-row"
+                role="group"
+                aria-label="Example questions"
+              >
+                {record.data.cases.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    disabled={save.busy}
+                    onClick={() => updateQuestion(item.question)}
+                  >
+                    {item.question}
+                  </button>
+                ))}
+              </div>
+            )}
           </form>
         )}
-        <button
-          disabled={save.busy}
-          onClick={() => {
-            resetAnswer()
-            save.reset()
-            record.reload()
-          }}
-        >
-          Refresh
-        </button>
+        {record.error || save.error || mode === 'pilot' ? (
+          <button
+            disabled={save.busy}
+            onClick={() => {
+              resetAnswer()
+              save.reset()
+              record.reload()
+            }}
+          >
+            {mode === 'pilot' ? 'Refresh' : 'Try again'}
+          </button>
+        ) : null}
         {save.busy && <p role="status">Finding an answer…</p>}
         {save.error && <Notice message={save.error} />}
         {result?.status === 'no_evidence' && (
@@ -338,6 +342,8 @@ export default function ChilliQuestionsPage({
             <p className="record-note">
               Source version · {pdf.citation.version_id}
             </p>
+            {pdf.citation.publisher && <p>{pdf.citation.publisher}</p>}
+            <PdfAttribution source={pdf.citation} />
             {!referenceOnly && pdf.citation.excerpt !== pdf.answer && (
               <blockquote lang="si">{pdf.citation.excerpt}</blockquote>
             )}
@@ -363,6 +369,18 @@ export default function ChilliQuestionsPage({
           </article>
         )}
       </section>
+      {mode === 'research' && (
+        <div className="button-row">
+          <Link to={guidancePath}>Chilli farm guidance</Link>
+          <Link to="/planner">Ask about my tasks</Link>
+          {import.meta.env.DEV && (
+            <>
+              <Link to={localPath}>Search reviewed excerpts locally</Link>
+              <Link to={demoPath}>Try the local demo</Link>
+            </>
+          )}
+        </div>
+      )}
     </>
   )
 }

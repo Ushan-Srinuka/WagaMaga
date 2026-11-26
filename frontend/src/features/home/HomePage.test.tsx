@@ -13,7 +13,7 @@ vi.mock('../../lib/accounts', async (importOriginal) => ({
 beforeEach(() => vi.clearAllMocks())
 
 it.each(['advisor', 'administrator'] as const)(
-  'does not load private farms for a signed-in %s on the public landing page',
+  'keeps farmer questions and private farms out of the %s homepage actions',
   async (role) => {
     vi.mocked(restoreSession).mockResolvedValueOnce({
       access_token: 'synthetic',
@@ -36,7 +36,7 @@ it.each(['advisor', 'administrator'] as const)(
       </MemoryRouter>,
     )
     expect(
-      await screen.findByRole('link', { name: /Open my account/ }),
+      await screen.findByRole('link', { name: 'My account' }),
     ).toHaveAttribute('href', '/account')
     expect(
       screen.queryByRole('combobox', { name: 'Choose your farm' }),
@@ -45,12 +45,15 @@ it.each(['advisor', 'administrator'] as const)(
       screen.queryByRole('link', { name: /Add my farm/ }),
     ).not.toBeInTheDocument()
     expect(
+      screen.queryByRole('link', { name: 'Ask Chilli AI' }),
+    ).not.toBeInTheDocument()
+    expect(
       vi.mocked(request).mock.calls.some(([path]) => path.startsWith('/farms')),
     ).toBe(false)
   },
 )
 
-it('shows a clear signed-out state and working account entry links', async () => {
+it('offers general login and a direct login for chilli questions', async () => {
   vi.mocked(restoreSession).mockRejectedValueOnce(
     new ApiError(401, 'Sign in to continue.'),
   )
@@ -59,20 +62,23 @@ it('shows a clear signed-out state and working account entry links', async () =>
       <App />
     </MemoryRouter>,
   )
-  expect(await screen.findByText('You’re signed out')).toBeVisible()
-  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-    /Your farm\.\s*All in one place\./i,
-  )
   expect(
-    screen.getAllByRole('link', { name: 'Create account' })[0],
-  ).toHaveAttribute('href', '/register')
-  expect(screen.getAllByRole('link', { name: 'Log in' })[0]).toHaveAttribute(
+    await screen.findByRole('link', { name: 'Log in to ask' }),
+  ).toHaveAttribute('href', '/login?ask=chilli')
+  expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute(
     'href',
     '/login',
   )
-  expect(screen.getAllByText('Planned', { exact: true })).toHaveLength(2)
-  expect(screen.getByText('Available', { exact: true })).toBeVisible()
-  expect(screen.getAllByText('Illustrative preview')).toHaveLength(3)
+  expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute(
+    'href',
+    '/register',
+  )
+  expect(
+    screen.getByRole('link', { name: 'Sign in for Chilli AI' }),
+  ).toHaveAttribute('href', '/login?ask=chilli')
+  expect(
+    screen.getByRole('link', { name: 'Log in to view farms' }),
+  ).toHaveAttribute('href', '/login')
   for (const link of screen.getAllByRole('link')) {
     const href = link.getAttribute('href')
     if (href?.startsWith('#')) {
@@ -80,13 +86,9 @@ it('shows a clear signed-out state and working account entry links', async () =>
     }
   }
   expect(request).not.toHaveBeenCalled()
-  expect(screen.getByRole('link', { name: /Get started/ })).toHaveAttribute(
-    'href',
-    '/register',
-  )
 })
 
-it('shows the signed-in account and an unread notification link', async () => {
+it('offers chilli questions and farm actions to the signed-in farmer', async () => {
   vi.mocked(restoreSession).mockResolvedValueOnce({
     access_token: 'synthetic-token',
     expires_in: 900,
@@ -112,24 +114,66 @@ it('shows the signed-in account and an unread notification link', async () => {
       <App />
     </MemoryRouter>,
   )
-  expect(await screen.findByText('Synthetic Farmer')).toBeVisible()
+  expect(await screen.findByText('Hello, Synthetic Farmer')).toBeVisible()
   expect(
     screen.getAllByRole('link', { name: 'My account' })[0],
   ).toHaveAttribute('href', '/account')
-  expect(
-    await screen.findByRole('link', { name: 'Notifications, 3 unread' }),
-  ).toHaveAttribute('href', '/notifications')
+  const notifications = await screen.findByRole('link', {
+    name: 'Notifications, 3 unread',
+  })
+  expect(notifications).toHaveAttribute('href', '/notifications')
+  expect(notifications).toHaveTextContent(/^3$/)
   expect(screen.getByRole('link', { name: 'My Farms' })).toHaveAttribute(
     'href',
     '/farms',
   )
+  expect(screen.getByRole('link', { name: 'Ask Chilli AI' })).toHaveAttribute(
+    'href',
+    '/knowledge/chilli',
+  )
   expect(
-    await screen.findByRole('link', { name: /Add my farm/ }),
-  ).toHaveAttribute('href', '/farms/new')
+    screen.getByRole('link', { name: 'Add a field note' }),
+  ).toHaveAttribute('href', '/field-notes/new')
+  expect(screen.getByRole('link', { name: 'Planner' })).toHaveAttribute(
+    'href',
+    '/planner',
+  )
   expect(
-    screen.getByRole('banner').querySelector('a[href="/farms/new"]'),
-  ).toBeInTheDocument()
+    screen.getByRole('link', { name: 'Ask a chilli question' }),
+  ).toHaveAttribute('href', '/knowledge/chilli')
+  expect(screen.getByRole('link', { name: 'View farms' })).toHaveAttribute(
+    'href',
+    '/farms',
+  )
+  expect(screen.getByRole('link', { name: 'Write a note' })).toHaveAttribute(
+    'href',
+    '/field-notes/new',
+  )
+  expect(screen.getByRole('link', { name: 'View tasks' })).toHaveAttribute(
+    'href',
+    '/planner',
+  )
+  expect(screen.getByRole('link', { name: 'Contact support' })).toHaveAttribute(
+    'href',
+    '/support/new',
+  )
+})
+
+it('keeps the homepage readable when the session cannot be checked', async () => {
+  vi.mocked(restoreSession).mockRejectedValueOnce(
+    new ApiError(503, 'Service unavailable.'),
+  )
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <App />
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('button', { name: 'Retry' })).toBeVisible()
   expect(
-    screen.queryByRole('link', { name: 'Dashboard' }),
+    screen.getByRole('heading', { name: 'Ask Chilli AI', level: 1 }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('link', { name: 'Ask Chilli AI' }),
   ).not.toBeInTheDocument()
+  expect(request).not.toHaveBeenCalled()
 })

@@ -11,17 +11,21 @@ vi.mock('../../lib/accounts', () => ({
 }))
 const password = 'a synthetic growing season password 1!'
 const setUser = vi.fn()
-function show(register = false) {
+function show(register = false, loginPath = '/login') {
   return render(
     <SessionContext.Provider
       value={{ user: null, phase: 'ready', setUser, restore: vi.fn() }}
     >
-      <MemoryRouter initialEntries={[register ? '/register' : '/login']}>
+      <MemoryRouter initialEntries={[register ? '/register' : loginPath]}>
         <Routes>
           <Route path="/" element={<p>Landing page opened</p>} />
           <Route path="/register" element={<AuthPage register />} />
           <Route path="/login" element={<AuthPage />} />
-          <Route path="/account" element={<p>Account opened</p>} />
+          <Route
+            path="/knowledge/chilli"
+            element={<p>Chilli question box opened</p>}
+          />
+          <Route path="/advisor" element={<p>Advisor inbox opened</p>} />
           <Route
             path="/admin/overview"
             element={<p>Admin overview opened</p>}
@@ -79,7 +83,7 @@ describe('account entry forms', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /Create account/ }))
     expect(
-      await screen.findByRole('heading', { name: 'Make yourself at home.' }),
+      await screen.findByRole('heading', { name: 'Log in' }),
     ).toBeInTheDocument()
     expect(registerAccount).toHaveBeenCalledWith(
       'Synthetic farmer',
@@ -141,7 +145,7 @@ describe('account entry forms', () => {
         target: { value: valid },
       })
       fireEvent.click(screen.getByRole('button', { name: /Create account/ }))
-      await screen.findByRole('heading', { name: 'Make yourself at home.' })
+      await screen.findByRole('heading', { name: 'Log in' })
       expect(registerAccount).toHaveBeenCalledWith(
         'Synthetic farmer',
         'farmer@example.com',
@@ -182,8 +186,8 @@ describe('account entry forms', () => {
     expect(await screen.findByText('Landing page opened')).toBeInTheDocument()
     await waitFor(() => expect(setUser).toHaveBeenCalled())
   })
-  it.each(['administrator', 'advisor'] as const)(
-    'sends %s accounts to their workspace without private farm queries',
+  it.each(['farmer', 'administrator', 'advisor'] as const)(
+    'routes Log in to ask to the right screen for %s',
     async (role) => {
       vi.mocked(signIn).mockResolvedValueOnce({
         access_token: 'synthetic',
@@ -199,12 +203,16 @@ describe('account entry forms', () => {
           created_at: '2026-11-19T00:00:00Z',
         },
       })
-      show()
+      show(false, '/login?ask=chilli')
       fill()
       fireEvent.click(screen.getByRole('button', { name: /Sign in/ }))
       expect(
         await screen.findByText(
-          role === 'administrator' ? 'Admin overview opened' : 'Account opened',
+          role === 'administrator'
+            ? 'Admin overview opened'
+            : role === 'advisor'
+              ? 'Advisor inbox opened'
+              : 'Chilli question box opened',
         ),
       ).toBeInTheDocument()
       expect(screen.queryByText('Landing page opened')).not.toBeInTheDocument()

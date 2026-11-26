@@ -6,6 +6,7 @@ import { useSession } from './app/session-context'
 import AccountPage from './features/account/AccountPage'
 import AuthPage from './features/auth/AuthPage'
 import AuditPage from './features/audit/AuditPage'
+import FarmActionBar from './features/home/FarmActionBar'
 import HomePage from './features/home/HomePage'
 import NotificationsPage from './features/notifications/NotificationsPage'
 import UserDetailPage from './features/users/UserDetailPage'
@@ -20,6 +21,8 @@ import HistoryPage from './features/farms/HistoryPage'
 import HelpPage from './features/support/HelpPage'
 import OverviewPage from './features/reporting/OverviewPage'
 import KnowledgeSourcesPage from './features/knowledge/KnowledgeSourcesPage'
+import AdvisorKnowledgePage from './features/knowledge/AdvisorKnowledgePage'
+import AdvisorInbox from './features/advisor/AdvisorInbox'
 import KnowledgeEvaluationPage from './features/knowledge/KnowledgeEvaluationPage'
 import KnowledgeScoringPage from './features/knowledge/KnowledgeScoringPage'
 import ChilliQuestionsPage from './features/knowledge/ChilliQuestionsPage'
@@ -102,9 +105,30 @@ function ProductRoutes() {
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/plan-reviews/:planId" element={<PlanReviewPage />} />
           <Route element={<Protected advisor />}>
+            <Route path="/advisor" element={<AdvisorInbox />} />
             <Route path="/advisor/cases" element={<AdvisorCasesPage />} />
+            <Route
+              path="/advisor/knowledge"
+              element={<AdvisorKnowledgePage />}
+            />
+            <Route
+              path="/advisor/knowledge/:versionId"
+              element={<AdvisorKnowledgePage />}
+            />
           </Route>
           <Route element={<Protected farmer />}>
+            <Route
+              path="/field-notes/new"
+              element={<FarmActionBar key="note" action="note" />}
+            />
+            <Route
+              path="/planner"
+              element={<FarmActionBar key="planner" action="planner" />}
+            />
+            <Route
+              path="/knowledge/chilli/crop"
+              element={<FarmActionBar key="chat" action="chat" />}
+            />
             <Route path="/knowledge/chilli" element={<ChilliQuestionsPage />} />
             <Route
               path="/knowledge/chilli/guidance"

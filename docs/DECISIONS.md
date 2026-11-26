@@ -311,6 +311,10 @@ Use structured farmer-reported soil moisture and confirmed stage for the three c
 
 Show overdue pending tasks and the next seven farm-local days in the cultivation. Use the owner's rainfall setting to compare one pending task with the earliest later forecast day below that threshold in the same week. Retain the confirmed stage in the review evidence and require advisor clearance when the stage is missing or the task revision has been referred. Reuse the immutable task-plan action and execution receipt. Sharing is explicit and revocable, with an exact advisor account and a minimal case snapshot. Advisor clearance and farmer acceptance have independent, bound records.
 
+## D41 Screened PDF intake and assigned knowledge review
+
+Use a loopback ClamAV `INSTREAM` scan in the existing worker before production text extraction. Keep quarantine bytes in the private PostgreSQL PDF relation and expose only extracted text. Keep existing local fixtures usable. Require a version-bound assigned advisor decision before an administrator can review or publish a screened version. Record the operator's independent quality report attestation against the exact production model and source checksums before farmer advisory release. [Deployment and operations](OPERATIONS.md#screened-production-pdf-intake)
+
 ## Recording an outcome
 
 For each resolved decision, record ID, date, status, context, chosen option, alternatives, consequences and affected documents. Keep superseded outcomes with their replacement link. Never mark a decision resolved just because Codex generated a suggestion.

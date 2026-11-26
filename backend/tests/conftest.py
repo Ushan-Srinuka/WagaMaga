@@ -75,7 +75,8 @@ def accounts(identity_engines):
             text(
                 "TRUNCATE knowledge_evaluation_runs, knowledge_evaluation_decisions, "
                 "chilli_jobs, chilli_chat_turns, chilli_chats, "
-                "knowledge_passages, knowledge_source_pdfs, knowledge_demo_decisions, "
+                "knowledge_passages, knowledge_source_review_events, "
+                "knowledge_source_pdfs, knowledge_demo_decisions, "
                 "knowledge_demo_versions, "
                 "support_events, support_messages, support_tickets, "
                 "weather_refresh_schedules, weather_review_notices, "

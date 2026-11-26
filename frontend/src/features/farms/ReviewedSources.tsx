@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import Notice from '../../components/Notice'
 import { farmWrite } from '../../lib/farms'
+import PdfAttribution, { type PdfProvenance } from '../knowledge/PdfAttribution'
 import { useSave } from './record-hooks'
 
 type Matches = {
   method: 'keyword' | 'hybrid'
-  items: {
+  items: (PdfProvenance & {
     id: string
     version_id: string
     title: string
@@ -13,7 +14,7 @@ type Matches = {
     language: string
     page_number: number
     body: string
-  }[]
+  })[]
 }
 
 export default function ReviewedSources({ path }: { path: string }) {
@@ -95,6 +96,7 @@ export default function ReviewedSources({ path }: { path: string }) {
               <p>
                 {item.publisher} · Version {item.version_id}
               </p>
+              <PdfAttribution source={item} />
             </details>
           ))}
         </div>

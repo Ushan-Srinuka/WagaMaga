@@ -163,11 +163,17 @@
   padding: 0;
   margin: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   min-width: 0;
 }
 .record-form .field {
   margin: 0;
+}
+.record-form details,
+.record-form input[type='datetime-local'] {
+  min-width: 0;
+  max-width: 100%;
 }
 .record-form button.primary {
   justify-self: start;
@@ -347,6 +353,14 @@
 .planner-day h4 {
   margin: 0;
 }
+.planner-overdue {
+  border-inline-start: 4px solid #a4512a;
+  background: var(--color-surface);
+}
+.planner-rain {
+  font-weight: 700;
+  color: #783719;
+}
 
 .planner-tasks {
   list-style: none;
@@ -357,4 +371,30 @@
 .planner-tasks > li {
   border-top: 1px solid var(--color-line);
   padding-block: 0.65rem;
+}
+
+.crop-navigation {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.crop-navigation a,
+.farm-records > details > summary,
+.record-form details > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--color-soft);
+  color: var(--color-forest);
+  cursor: pointer;
+  font-weight: 650;
+}
+.crop-navigation a:hover {
+  text-decoration: underline;
+}
+
+.crop-navigation [aria-current='page'] {
+  background: var(--color-forest);
+  color: white;
 }

@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.integrations import clamav
 from app.modules.knowledge.models import SourcePdf, SourceVersion
 
 PARSER = Path(__file__).with_name("pdf_text.py")
@@ -36,9 +37,10 @@ def extract_pdf(original):
         return {"error": "parser_stopped"}
 
 
-def process_one(engine):
+def process_one(engine, settings=None):
+    production = settings is not None and settings.app_env == "production"
     with Session(engine) as db, db.begin():
-        pdf = db.scalar(
+        statement = (
             select(SourcePdf)
             .join(SourceVersion, SourceVersion.id == SourcePdf.version_id)
             .where(SourcePdf.state == "queued", SourceVersion.status == "draft")
@@ -46,18 +48,24 @@ def process_one(engine):
             .limit(1)
             .with_for_update(of=SourcePdf, skip_locked=True)
         )
+        if production:
+            statement = statement.where(SourcePdf.screening_required)
+        pdf = db.scalar(statement)
         if pdf is None:
             return False
         original = pdf.original
         checksum = db.scalar(
             select(SourceVersion.checksum).where(SourceVersion.id == pdf.version_id)
         )
-        result = (
-            extract_pdf(original)
-            if sha256(original).hexdigest() == checksum
-            else {"error": "checksum_mismatch"}
-        )
+        error = None
+        if sha256(original).hexdigest() != checksum:
+            error = "checksum_mismatch"
+        elif pdf.screening_required:
+            error = clamav.scan(original, settings.clamav_port if settings else None)
+        result = {"error": error} if error else extract_pdf(original)
         pdf.pages = result.get("pages")
         pdf.error = result.get("error")
+        if pdf.error == "scan_rejected":
+            pdf.original = None
         pdf.state = "failed" if pdf.error else "ready"
     return True

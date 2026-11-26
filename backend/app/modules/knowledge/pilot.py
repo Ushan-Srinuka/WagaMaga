@@ -22,7 +22,8 @@ def answer_text(page):
 
 
 def prepared_case(db, settings, case_id):
-    case = evaluation.case_evidence(db, case_id)
+    production = settings.app_env == "production"
+    case = evaluation.case_evidence(db, case_id, pilot_scope=production)
     suitable = [
         page
         for page in case["pages"]
@@ -54,7 +55,7 @@ def prepared_case(db, settings, case_id):
     elif case["missing"]:
         expected, reason = "no_evidence", ""
     snapshot = {
-        "policy": POLICY_VERSION,
+        "policy": f"{POLICY_VERSION}-screened" if production else POLICY_VERSION,
         "case": case_id,
         "question": case["question"],
         "revision": case["revision"],
@@ -107,8 +108,28 @@ def suite(db, settings):
         )
     passed = all(case["passed"] is True for case in checks)
     cited = any(case["expected"] == "cited" for case in checks)
-    ready = passed and cited
-    return {"cases": checks, "ready": ready, "released": ready and settings.farmer_advisory_enabled}
+    quality_ready = quality_review_ready(settings)
+    ready = passed and cited and quality_ready
+    return {
+        "cases": checks,
+        "ready": ready,
+        "released": ready and settings.farmer_advisory_enabled,
+        "independent_review_pending": not quality_ready,
+    }
+
+
+def quality_review_ready(settings):
+    review = settings.farmer_advisory_quality_review
+    return settings.app_env != "production" or (
+        review is not None
+        and review.model == settings.gemini_model
+        and review.pdf_checksums == settings.gemini_approved_pdf_checksums
+        and settings.rag_embedding_pdf_checksums == review.pdf_checksums
+    )
+
+
+def release_configured(settings):
+    return settings.farmer_advisory_enabled and quality_review_ready(settings)
 
 
 def verified_quote(settings, case, on_provider_call):
@@ -164,7 +185,7 @@ def require_farmer(db, ids):
 
 def farmer_questions(db, ids, settings):
     require_farmer(db, ids)
-    released = settings.farmer_advisory_enabled and suite(db, settings)["released"]
+    released = release_configured(settings) and suite(db, settings)["released"]
     return {
         "released": released,
         "cases": [{"id": key, "question": case.question} for key, case in CASES.items()]
@@ -175,7 +196,7 @@ def farmer_questions(db, ids, settings):
 
 def released_case(db, ids, settings, case_id):
     require_farmer(db, ids)
-    if settings.farmer_advisory_enabled:
+    if release_configured(settings):
         current = suite(db, settings)
         if current["released"]:
             for case in current["cases"]:
@@ -212,5 +233,10 @@ def farmer_page(db, ids, settings, case_id, version_id, number):
                 )
             )
             if pages is not None:
-                return {"number": number, "text": pages[number - 1]}
+                body = (
+                    page["decision"].approved_excerpt
+                    if settings.app_env == "production"
+                    else pages[number - 1]
+                )
+                return {"number": number, "text": body}
     raise IdentityError(404, "SOURCE_NOT_FOUND", "Reviewed page not found.")

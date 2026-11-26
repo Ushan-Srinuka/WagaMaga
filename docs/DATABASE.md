@@ -112,6 +112,8 @@ Migration `0027_private_chilli_chats` adds owner-scoped `chilli_chats` and appen
 
 Migration `0028_chilli_jobs` adds durable Chilli AI jobs with one active or successful job per chat revision, bounded attempts and a lease token. The turn and successful job state commit in one transaction. Conversation deletion cascades to its jobs. PDF extraction gains a bounded retry counter and a trigger that permits requeue only after a transient failure on a draft. The original PDF bytes remain immutable through retry.
 
+Migration `0029_screened_knowledge` records the immutable `screening_required` flag on a PDF. The worker can clear the original on a confirmed scan rejection while retaining its checksum and failure code. A scanner outage can requeue through the existing capped retry path. `knowledge_source_review_events` stores append-only assignment, revocation and decision events keyed by immutable source version and sequence. The application role can read and append those events. Downgrade stops if screened intake or advisor review evidence exists.
+
 Index ownership and relationship filters, task cultivation/date/status, and notification recipient/read status. Use GIN for full text search. Record embedding model, dimensions and index version; never compare incompatible embeddings. Start with exact vector search for the small corpus and add approximate indexing only after measuring recall. See the [pgvector documentation](https://github.com/pgvector/pgvector).
 
 ## Migration workflow

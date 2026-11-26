@@ -1,4 +1,4 @@
-"""Scope the lifecycle demonstration to a server-owned fictional guide."""
+"""Manage immutable knowledge sources, processing and publication."""
 
 from hashlib import sha256
 
@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 
 from app.modules.identity.security import IdentityError
 from app.modules.identity.service import active_actor, require_admin
-from app.modules.knowledge import rag
+from app.modules.knowledge import rag, source_reviews
 from app.modules.knowledge.models import SourceDecision, SourcePdf, SourceVersion
 
 DEMO_TITLE = "Chilli pilot demonstration guide"
@@ -46,7 +46,9 @@ def search_published_pages(db, ids, query, *, checksum=None, exclude_checksum=No
     return published_page_matches(db, query, checksum=checksum, exclude_checksum=exclude_checksum)
 
 
-def published_page_matches(db, query, *, checksum=None, exclude_checksum=None, legacy_only=False):
+def published_page_matches(
+    db, query, *, checksum=None, exclude_checksum=None, legacy_only=False, pilot_scope=False
+):
     return _page_matches(
         db,
         query,
@@ -54,6 +56,7 @@ def published_page_matches(db, query, *, checksum=None, exclude_checksum=None, l
         checksum=checksum,
         exclude_checksum=exclude_checksum,
         legacy_only=legacy_only,
+        pilot_scope=pilot_scope,
     )
 
 
@@ -62,12 +65,26 @@ def draft_page_matches(db, version_id, query):
 
 
 def _page_matches(
-    db, query, status, *, version_id=None, checksum=None, exclude_checksum=None, legacy_only=False
+    db,
+    query,
+    status,
+    *,
+    version_id=None,
+    checksum=None,
+    exclude_checksum=None,
+    legacy_only=False,
+    pilot_scope=False,
 ):
     statement = text("""
-        WITH query AS (SELECT plainto_tsquery('simple', :query) AS terms),
+        WITH query AS (
+            SELECT plainto_tsquery('simple', :query) AS terms,
+                (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Colombo')::date AS local_today
+        ),
         matches AS (
             SELECT source.id AS version_id, source.title, source.checksum,
+                source.rag_metadata->>'publisher' AS publisher,
+                source.rag_metadata->>'source_url' AS source_url,
+                source.rag_metadata->>'reuse_basis' AS reuse_basis,
                 page.number, page.body, query.terms,
                 ts_rank_cd(to_tsvector('simple', page.body), query.terms) AS score
             FROM knowledge_demo_versions AS source
@@ -77,6 +94,16 @@ def _page_matches(
             CROSS JOIN query
             WHERE source.status = :status AND pdf.state = 'ready'
                 AND (NOT :legacy_only OR source.rag_metadata IS NULL)
+                AND (NOT :pilot_scope OR (pdf.screening_required
+                    AND source.rag_metadata->>'access' = 'farmers'
+                    AND source.rag_metadata->>'crop' = 'chilli'
+                    AND source.rag_metadata->>'region' IN ('anuradhapura', 'sri lanka')
+                    AND COALESCE(
+                        CAST(source.rag_metadata->>'published_on' AS date), query.local_today
+                    ) <= query.local_today
+                    AND COALESCE(
+                        CAST(source.rag_metadata->>'valid_until' AS date), query.local_today
+                    ) >= query.local_today))
                 AND source.id = coalesce(CAST(:version_id AS uuid), source.id)
                 AND source.checksum = coalesce(CAST(:checksum AS text), source.checksum)
                 AND source.checksum IS DISTINCT FROM CAST(:exclude_checksum AS text)
@@ -84,7 +111,7 @@ def _page_matches(
             ORDER BY score DESC, source.id, page.number
             LIMIT 10
         )
-        SELECT version_id, title, checksum, number,
+        SELECT version_id, title, checksum, number, publisher, source_url, reuse_basis,
             left(ts_headline('simple', body, terms,
                 'StartSel=[, StopSel=], MaxWords=28, MinWords=10, MaxFragments=2'), 600)
                 AS excerpt
@@ -98,6 +125,7 @@ def _page_matches(
         "checksum": checksum,
         "exclude_checksum": exclude_checksum,
         "legacy_only": legacy_only,
+        "pilot_scope": pilot_scope,
     }
     return db.execute(statement, params).mappings().all()
 
@@ -139,12 +167,16 @@ def locked_source(db, version_id):
     )
 
 
-def add_pdf(db, ids, original, request_id, *, title=None, replaces=None, metadata=None):
+def add_pdf(
+    db, ids, original, request_id, *, title=None, replaces=None, metadata=None, screened=False
+):
     actor = admin_actor(db, ids, write=True)
     if not original.startswith(b"%PDF-"):
         raise IdentityError(422, "INVALID_PDF", "Choose a valid PDF file.")
     checksum = sha256(original).hexdigest()
-    version_metadata = metadata.model_dump(mode="json") if metadata else None
+    version_metadata = metadata.model_dump(mode="json", exclude_unset=True) if metadata else None
+    if metadata is not None:
+        version_metadata["access"] = metadata.access
     if replaces is not None:
         prior = locked_source(db, replaces)
         if prior is None or prior.pdf is None or prior.status != "published":
@@ -157,9 +189,10 @@ def add_pdf(db, ids, original, request_id, *, title=None, replaces=None, metadat
         )
         if version_metadata is None:
             version_metadata = prior.rag_metadata
-        if existing is not None or (checksum, version_metadata) == (
+        if existing is not None or (checksum, version_metadata, screened) == (
             prior.checksum,
             prior.rag_metadata,
+            prior.screening_required,
         ):
             raise IdentityError(
                 409,
@@ -167,6 +200,15 @@ def add_pdf(db, ids, original, request_id, *, title=None, replaces=None, metadat
                 "Change the PDF or its metadata and check pending replacements.",
             )
         title = title or prior.title
+    if screened and (
+        not title
+        or not version_metadata
+        or not version_metadata.get("source_url")
+        or not version_metadata.get("reuse_basis")
+    ):
+        raise IdentityError(
+            422, "SOURCE_PROVENANCE_REQUIRED", "Enter a title, source URL and reuse basis."
+        )
     source = SourceVersion(
         title=title or "Uploaded sample PDF",
         rag_metadata=version_metadata,
@@ -175,7 +217,7 @@ def add_pdf(db, ids, original, request_id, *, title=None, replaces=None, metadat
         replaces_version_id=replaces,
         status="draft",
         revision=1,
-        pdf=SourcePdf(original=original, state="queued"),
+        pdf=SourcePdf(original=original, state="queued", screening_required=screened),
     )
     db.add(source)
     db.flush()
@@ -211,7 +253,7 @@ def retry_pdf(db, ids, version_id):
     return source
 
 
-def transition(db, ids, version_id, action, expected_revision, request_id):
+def transition(db, ids, version_id, action, expected_revision, request_id, *, production=False):
     actor = admin_actor(db, ids, write=True)
     source = locked_source(db, version_id)
     if source is None or source.status == "discarded":
@@ -239,6 +281,14 @@ def transition(db, ids, version_id, action, expected_revision, request_id):
         if source.status != before:
             raise IdentityError(
                 409, "SOURCE_CONFLICT", "Refresh and check the current source status."
+            )
+    if source.pdf is not None and action in ("review", "publish"):
+        if production and not source.screening_required:
+            raise IdentityError(409, "PDF_SCREENING_REQUIRED", "Upload a screened PDF version.")
+        review = source_reviews.latest(db, source.id)
+        if (source.screening_required or review) and (review is None or review.event != "approved"):
+            raise IdentityError(
+                409, "ADVISOR_REVIEW_REQUIRED", "An advisor must approve this version."
             )
     if action == "publish" and source.replaces_version_id is not None:
         prior = locked_source(db, source.replaces_version_id)

@@ -5,7 +5,7 @@ import Field from '../../components/Field'
 import Notice from '../../components/Notice'
 import Brand from '../../components/Brand'
 import { signedInHome } from '../../lib/navigation'
-import { registerAccount, signIn } from '../../lib/accounts'
+import { registerAccount, signIn, type Role } from '../../lib/accounts'
 import {
   isSignupPasswordValid,
   PASSWORD_REQUIREMENTS,
@@ -27,7 +27,12 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
         Restoring your session…
       </main>
     )
-  if (user) return <Navigate to={signedInHome(user.role)} replace />
+  function destination(role: Role) {
+    return role === 'farmer' && params.get('ask') === 'chilli'
+      ? '/knowledge/chilli'
+      : signedInHome(role)
+  }
+  if (user) return <Navigate to={destination(user.role)} replace />
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
@@ -47,7 +52,7 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
       } else {
         const signedIn = (await signIn(email, password)).user
         setUser(signedIn)
-        navigate(signedInHome(signedIn.role), {
+        navigate(destination(signedIn.role), {
           replace: true,
         })
       }
@@ -78,34 +83,22 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
             height="941"
             alt="AI-generated view of a chilli field at sunrise"
           />
-          <p className="eyebrow">Grow with confidence</p>
-          <h1>
+          <h2 className="auth-story-title">
             Good decisions
             <br />
-            start with
-            <br />
-            <em>a strong foundation.</em>
-          </h1>
+            start with <span>a strong foundation.</span>
+          </h2>
           <p>
-            A space for your next growing season.
-            <br />
-            Start with an account that’s yours.
+            Keep your field notes, farm plans and chilli-growing questions in
+            one place.
           </p>
-          <span className="story-footnote">
-            Thoughtful guidance. Human decisions.
-          </span>
         </section>
         <section className="auth-card" aria-labelledby="auth-title">
-          <span className="section-number">
-            {register ? '01 / Get started' : 'Welcome back'}
-          </span>
-          <h2 id="auth-title">
-            {register ? 'Create your account' : 'Make yourself at home.'}
-          </h2>
-          <p className="muted">
+          <h1 id="auth-title">{register ? 'Create your account' : 'Log in'}</h1>
+          <p className="auth-intro">
             {register
-              ? 'Register as a farmer. Your account is the first step.'
-              : 'Sign in to your WagaMaga account.'}
+              ? 'Create a farmer account to save field notes and plan your farm work.'
+              : 'Log in to open your farm tools and ask Chilli AI.'}
           </p>
           {!register && params.has('registered') && (
             <Notice
@@ -172,9 +165,6 @@ export default function AuthPage({ register = false }: { register?: boolean }) {
             <Link to={register ? '/login' : '/register'}>
               {register ? 'Sign in' : 'Create an account'}
             </Link>
-          </p>
-          <p className="local-note">
-            Local development preview · Use synthetic account details.
           </p>
         </section>
       </main>

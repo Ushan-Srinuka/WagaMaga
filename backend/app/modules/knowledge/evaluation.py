@@ -16,9 +16,9 @@ def list_cases(db, ids):
     return [{"id": key, "question": case.question} for key, case in CASES.items()]
 
 
-def read_case(db, ids, case_id):
+def read_case(db, ids, case_id, *, pilot_scope=False):
     service.admin_actor(db, ids)
-    return case_evidence(db, case_id)
+    return case_evidence(db, case_id, pilot_scope=pilot_scope)
 
 
 def preview_draft(db, ids, case_id, version_id):
@@ -85,7 +85,7 @@ def preview_draft_answer(db, ids, case_id, data):
     return {"status": "answered", "answer": translation, "citation": {**page, "excerpt": excerpt}}
 
 
-def case_evidence(db, case_id):
+def case_evidence(db, case_id, *, pilot_scope=False):
     case = CASES.get(case_id)
     if case is None:
         raise IdentityError(404, "CASE_NOT_FOUND", "Evaluation question not found.")
@@ -94,7 +94,11 @@ def case_evidence(db, case_id):
     matches = {}
     for keywords in (case.keywords, case.sinhala_keywords):
         for page in service.published_page_matches(
-            db, keywords, exclude_checksum=preview_fixture.CHECKSUM, legacy_only=True
+            db,
+            keywords,
+            exclude_checksum=preview_fixture.CHECKSUM,
+            legacy_only=not pilot_scope,
+            pilot_scope=pilot_scope,
         ):
             matches.setdefault((page["version_id"], page["number"]), page)
     latest = (
@@ -128,7 +132,7 @@ def case_evidence(db, case_id):
     }
 
 
-def save_decision(db, ids, case_id, data, request_id):
+def save_decision(db, ids, case_id, data, request_id, *, pilot_scope=False):
     actor = service.admin_actor(db, ids, write=True)
     if data.version_id is not None:
         published = db.scalar(
@@ -138,7 +142,7 @@ def save_decision(db, ids, case_id, data, request_id):
         )
         if published is None:
             raise IdentityError(409, "EVIDENCE_CHANGED", "Refresh and select a published page.")
-    current = case_evidence(db, case_id)
+    current = case_evidence(db, case_id, pilot_scope=pilot_scope)
     if current["revision"] != data.expected_revision:
         raise IdentityError(409, "REVIEW_CHANGED", "Refresh and review the latest decisions.")
     if data.outcome == "missing":

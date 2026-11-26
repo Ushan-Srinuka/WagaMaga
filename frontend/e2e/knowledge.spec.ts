@@ -65,6 +65,150 @@ async function reviewedExcerptsPdf(quotes: string[]) {
   return stdout
 }
 
+test('administrator assigns a PDF version and the advisor reviews it', async ({
+  page,
+  request,
+  browser,
+}) => {
+  const web = { Origin: webOrigin, 'X-WagaMaga-Client': 'web' }
+  const suffix = randomBytes(6).toString('hex')
+  const email = `knowledge-review-${suffix}@example.com`
+  const title = `Synthetic review ${suffix}`
+  const password = process.env.E2E_PASSWORD!
+  const signup = await request.post(`${apiRoot}/auth/register`, {
+    headers: web,
+    data: { email, password, display_name: 'Synthetic knowledge advisor' },
+  })
+  expect(signup.ok()).toBe(true)
+  const participant = await request.post(`${apiRoot}/auth/login`, {
+    headers: web,
+    data: { email, password },
+  })
+  expect(participant.ok()).toBe(true)
+  const profile = await request.get(`${apiRoot}/me`, {
+    headers: {
+      ...web,
+      Authorization: `Bearer ${(await participant.json()).access_token}`,
+    },
+  })
+  expect(profile.ok()).toBe(true)
+  const person = await profile.json()
+  const admin = await request.post(`${apiRoot}/auth/login`, {
+    headers: web,
+    data: {
+      email: `browser-admin-${process.env.E2E_RUN_ID}@example.com`,
+      password,
+    },
+  })
+  expect(admin.ok()).toBe(true)
+  const promotion = await request.patch(
+    `${apiRoot}/admin/users/${person.id}/role`,
+    {
+      headers: {
+        ...web,
+        Authorization: `Bearer ${(await admin.json()).access_token}`,
+      },
+      data: {
+        role: 'advisor',
+        expected_version: person.version,
+        reason: 'Synthetic knowledge review test',
+      },
+    },
+  )
+  expect(promotion.ok()).toBe(true)
+
+  await openKnowledge(page)
+  await page.getByLabel('Source title').fill(title)
+  await page.getByLabel('Synthetic PDF').setInputFiles({
+    name: 'review.pdf',
+    mimeType: 'application/pdf',
+    buffer: await reviewedExcerptsPdf([
+      'First synthetic study page.',
+      'Second synthetic study page.',
+    ]),
+  })
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/admin/knowledge/sources/pdf') &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Upload PDF', exact: true }).click()
+  expect((await saved).status()).toBe(201)
+  await processQueuedPdfs()
+  await page.getByRole('button', { name: 'Refresh sources' }).click()
+  const card = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: title }) })
+  await card.getByText('Advisor review', { exact: true }).click()
+  await card.getByLabel('Advisor email').fill(email)
+  await card
+    .getByRole('button', { name: 'Assign advisor', exact: true })
+    .click()
+  await expect(
+    card.getByText('Awaiting advisor review', { exact: true }),
+  ).toBeVisible()
+
+  const advisorContext = await browser.newContext({
+    viewport: page.viewportSize(),
+  })
+  try {
+    const advisor = await advisorContext.newPage()
+    await advisor.goto(`${webOrigin}/login`)
+    await advisor.getByLabel('Email address').fill(email)
+    await advisor.getByLabel('Password', { exact: true }).fill(password)
+    await advisor.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(advisor).toHaveURL(/\/advisor$/)
+    await advisor.getByRole('link', { name: title, exact: true }).click()
+    const review = advisor
+      .getByRole('article')
+      .filter({ has: advisor.getByRole('heading', { name: title }) })
+    const evidence = review.getByRole('region', { name: 'Extracted PDF text' })
+    await expect(
+      evidence.getByText('First synthetic study page.'),
+    ).toBeVisible()
+    const reason = review.getByLabel('Review reason')
+    await reason.fill('Checked both pages of the synthetic source.')
+    await evidence.getByLabel('Jump to page').fill('2')
+    await evidence.getByRole('button', { name: 'Go to page' }).click()
+    await expect(
+      evidence.getByText('Second synthetic study page.'),
+    ).toBeVisible()
+    await expect(reason).toHaveValue(
+      'Checked both pages of the synthetic source.',
+    )
+    await review.getByLabel('Review outcome').selectOption('approved')
+    await review.getByRole('button', { name: 'Submit decision' }).click()
+    await expect(
+      review.getByText('Approved by advisor', { exact: true }),
+    ).toBeVisible()
+    await advisor.getByRole('link', { name: 'All knowledge reviews' }).click()
+    await expect(
+      advisor.getByText('No PDF versions are assigned to you.'),
+    ).toBeVisible()
+    await advisor.getByRole('button', { name: 'Recently reviewed' }).click()
+    await expect(
+      advisor.getByRole('link', { name: title, exact: true }),
+    ).toBeVisible()
+  } finally {
+    await advisorContext.close()
+  }
+  await page.getByRole('button', { name: 'Refresh sources' }).click()
+  await expect(
+    card.getByRole('button', { name: 'Mark as reviewed' }),
+  ).toBeVisible()
+  for (const [label, status] of [
+    ['Mark as reviewed', 'reviewed'],
+    ['Publish', 'published'],
+  ]) {
+    await card.getByRole('button', { name: label, exact: true }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: label, exact: true })
+      .click()
+    await expect(card.getByText(status, { exact: true })).toBeVisible()
+  }
+})
+
 test('live Gemini demo answers with the published page citation', async ({
   page,
 }) => {
@@ -178,15 +322,19 @@ async function openTestFarmer(page: Page, request: APIRequestContext) {
   await expect(page).toHaveURL('/')
 }
 
-test('farmer reads a published chilli study answer and the cited page', async ({
+test('farmer reads a published chilli study and its cited page from home', async ({
   page,
   request,
 }) => {
   await openTestFarmer(page, request)
-  await page.goto('/knowledge/chilli')
+  const ask = page.getByRole('link', { name: 'Ask Chilli AI' })
+  await expect(ask).toBeInViewport()
+  await ask.focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL('/knowledge/chilli')
   const example = 'Where was the dry zone chilli field study conducted?'
   await page.getByRole('button', { name: example, exact: true }).click()
-  const question = page.getByLabel('Type your question')
+  const question = page.getByLabel('What would you like to ask about chilli?')
   await expect(question).toHaveValue(example)
   await question.fill('Where was the Anuradhapura chili trial?')
   const find = page.getByRole('button', { name: 'Find an answer' })
@@ -196,7 +344,7 @@ test('farmer reads a published chilli study answer and the cited page', async ({
   await expect(answer).toContainText('Tirappane')
   await expect(answer).toContainText('Journal page 32 · PDF page 3')
   const supporting = answer.getByRole('button', {
-    name: 'Show supporting passage',
+    name: 'View source',
   })
   const sourceRoute = '**/api/v1/knowledge/chilli/research/sources/**'
   await page.route(sourceRoute, (route) =>
@@ -205,7 +353,7 @@ test('farmer reads a published chilli study answer and the cited page', async ({
   await supporting.focus()
   await page.keyboard.press('Enter')
   await expect(
-    answer.getByRole('button', { name: 'Hide supporting passage' }),
+    answer.getByRole('button', { name: 'Hide source' }),
   ).toHaveAttribute('aria-expanded', 'true')
   await expect(answer.getByRole('alert')).toContainText(
     'The supporting passage could not be loaded.',
@@ -249,7 +397,7 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
   await openTestFarmer(page, request)
   await page.goto('/knowledge/chilli')
   await expect(
-    page.getByRole('heading', { name: 'Chilli questions' }),
+    page.getByRole('heading', { name: 'Ask Chilli AI' }),
   ).toBeVisible()
   await page.getByRole('link', { name: 'Chilli farm guidance' }).click()
   await expect(
@@ -262,10 +410,10 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
     page.getByRole('button', { name: 'Find an answer' }),
   ).toHaveCount(0)
 
-  await page.getByRole('link', { name: 'Back to Chilli questions' }).click()
+  await page.getByRole('link', { name: 'Back to Ask Chilli AI' }).click()
   if (process.env.E2E_BUILT_FRONTEND === '1') {
     await expect(
-      page.getByRole('heading', { name: 'Chilli questions' }),
+      page.getByRole('heading', { name: 'Ask Chilli AI' }),
     ).toBeVisible()
     await expect(
       page.getByRole('link', { name: 'Try the local demo' }),
@@ -276,7 +424,7 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
   await expect(
     page.getByRole('heading', { name: 'Chilli questions demo' }),
   ).toBeVisible()
-  const question = page.getByLabel('Type your question')
+  const question = page.getByLabel('What would you like to ask about chilli?')
   const find = page.getByRole('button', { name: 'Find an answer' })
   const answer = page.getByRole('article', { name: 'Cited answer' })
   const readPage = answer.getByRole('button', { name: 'Read cited page' })
@@ -312,9 +460,9 @@ test('farmer sees the pending chilli pilot and can try the local demo', async ({
     await expect(answer.getByText(quote, { exact: false })).toHaveCount(2)
   }
 
-  await page.getByRole('link', { name: 'Back to Chilli questions' }).click()
+  await page.getByRole('link', { name: 'Back to Ask Chilli AI' }).click()
   await expect(
-    page.getByRole('heading', { name: 'Chilli questions', exact: true }),
+    page.getByRole('heading', { name: 'Ask Chilli AI', exact: true }),
   ).toBeVisible()
 })
 
@@ -323,7 +471,7 @@ test('farmer searches reviewed excerpts locally', async ({ page, request }) => {
     await openTestFarmer(page, request)
     await page.goto('/knowledge/chilli')
     await expect(
-      page.getByRole('heading', { name: 'Chilli questions' }),
+      page.getByRole('heading', { name: 'Ask Chilli AI' }),
     ).toBeVisible()
     await expect(
       page.getByRole('link', { name: 'Search reviewed excerpts locally' }),
@@ -395,7 +543,7 @@ test('farmer searches reviewed excerpts locally', async ({ page, request }) => {
     },
     { timeout: 25_000 },
   )
-  const question = page.getByLabel('Type your question')
+  const question = page.getByLabel('What would you like to ask about chilli?')
   const find = page.getByRole('button', { name: 'Find an answer' })
   await test.step('Unreviewed evidence is unavailable', async () => {
     await question.fill(fixtures[0][1])

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Notice from '../../components/Notice'
 import { farmWrite, timestamp, type Page } from '../../lib/farms'
+import PdfAttribution, { type PdfProvenance } from '../knowledge/PdfAttribution'
 import { Pagination, ReadState } from './RecordUI'
 import { useRecord, useSave } from './record-hooks'
 
@@ -28,14 +29,16 @@ type History = Summary & {
     question: string
     outcome: keyof typeof messages
     answer: string | null
-    citation: {
-      title: string
-      publisher: string
-      page_number: number
-      version_id: string
-      language: string
-      body: string
-    } | null
+    citation:
+      | (PdfProvenance & {
+          title: string
+          publisher: string
+          page_number: number
+          version_id: string
+          language: string
+          body: string
+        })
+      | null
   }[]
 }
 
@@ -90,7 +93,11 @@ export default function ChilliPdfChat({
 
   return (
     <section className="panel" aria-labelledby="chilli-pdf-chat-heading">
-      <h2 id="chilli-pdf-chat-heading">Ask Chilli AI about reviewed PDFs</h2>
+      <h2 id="chilli-pdf-chat-heading">Ask Chilli AI about this crop</h2>
+      <p className="muted">
+        Ask a growing question and open the supporting PDF page when an answer
+        is available.
+      </p>
       <div className="button-row">
         {!archived && (
           <button
@@ -171,6 +178,7 @@ export default function ChilliPdfChat({
                         {turn.citation.publisher} · Version{' '}
                         {turn.citation.version_id}
                       </small>
+                      <PdfAttribution source={turn.citation} />
                     </details>
                   )}
                 </article>

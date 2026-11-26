@@ -6,12 +6,16 @@ export type PdfMetadata = {
   published_on: string | null
   valid_until: string | null
   access: 'admin' | 'farmers'
+  source_url?: string | null
+  reuse_basis?: string | null
 }
 
 export default function PdfMetadataFields({
   previous,
+  screened = false,
 }: {
   previous?: PdfMetadata | null
+  screened?: boolean
 }) {
   return (
     <fieldset>
@@ -74,6 +78,29 @@ export default function PdfMetadataFields({
           <option value="farmers">Farmers with a matching cultivation</option>
         </select>
       </label>
+      {screened && (
+        <>
+          <label className="field">
+            Original source URL
+            <input
+              name="source_url"
+              type="url"
+              required
+              maxLength={300}
+              defaultValue={previous?.source_url ?? ''}
+            />
+          </label>
+          <label className="field">
+            Reuse basis
+            <input
+              name="reuse_basis"
+              required
+              maxLength={240}
+              defaultValue={previous?.reuse_basis ?? ''}
+            />
+          </label>
+        </>
+      )}
     </fieldset>
   )
 }

@@ -1,4 +1,4 @@
-"""Administrator HTTP entry points for the synthetic guide workflow."""
+"""Knowledge administration, advisor reviews and farmer reading routes."""
 
 from asyncio import timeout
 from datetime import datetime
@@ -6,7 +6,15 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    HttpUrl,
+    ValidationError,
+    model_validator,
+)
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
 
@@ -30,6 +38,7 @@ from app.modules.knowledge import (
     rag,
     research,
     service,
+    source_reviews,
 )
 from app.modules.knowledge.pdf_text import MAX_BYTES, MAX_PAGES
 
@@ -46,6 +55,7 @@ evaluation_router = APIRouter(
     dependencies=[Depends(administrator)],
 )
 farmer_router = APIRouter(prefix="/api/v1/knowledge/chilli", tags=["Chilli questions"])
+advisor_router = APIRouter(prefix="/api/v1/advisor/knowledge", tags=["Assigned knowledge reviews"])
 
 
 class AddDemo(BaseModel):
@@ -76,16 +86,62 @@ class Source(BaseModel):
     processing: Literal["queued", "ready", "failed", "deleted"]
     processing_error: str | None
     retryable: bool = False
+    screening_required: bool = False
 
 
 class SourcePage(BaseModel):
     items: list[Source]
     has_more: bool
+    screened_uploads: bool
+    upload_available: bool
 
 
 class PdfPage(BaseModel):
     number: int
     text: str
+
+
+class AssignedPdfPage(PdfPage):
+    total: int
+
+
+class SourceReview(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    sequence: int
+    event: Literal["assigned", "revoked", "approved", "changes_requested"]
+    reason: str
+    created_at: datetime
+
+
+class AssignmentStatus(BaseModel):
+    review: SourceReview | None
+
+
+class AssignedSource(BaseModel):
+    assigned_at: datetime
+    id: UUID
+    title: str
+    checksum: str
+    rag_metadata: rag.Metadata | None
+    review: SourceReview
+
+
+class AssignedSources(BaseModel):
+    items: list[AssignedSource]
+    has_more: bool
+
+
+class ReviewAssignment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_sequence: Annotated[int, Field(strict=True, ge=0, lt=2147483647)]
+    advisor_email: EmailStr | None
+
+
+class AdvisorDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    expected_sequence: Annotated[int, Field(strict=True, ge=1, lt=2147483647)]
+    outcome: Literal["approved", "changes_requested"]
+    reason: str = Field(min_length=1, max_length=500, pattern=r"^[^\x00]+$")
 
 
 class PageMatch(BaseModel):
@@ -94,6 +150,9 @@ class PageMatch(BaseModel):
     checksum: str
     number: int
     excerpt: str
+    publisher: str | None = None
+    source_url: HttpUrl | None = None
+    reuse_basis: str | None = None
 
 
 Outcome = Literal["suitable", "out_of_scope", "missing"]
@@ -178,6 +237,7 @@ class ScoreSuite(BaseModel):
     cases: list[ScoreCase]
     ready: bool
     released: bool
+    independent_review_pending: bool
 
 
 class ScoreResult(BaseModel):
@@ -217,8 +277,10 @@ def evaluation_cases(db: DB, ids: Principal):
 
 
 @evaluation_router.get("/{case_id}", response_model=ReviewCase)
-def evaluation_case(case_id: str, db: DB, ids: Principal):
-    return evaluation.read_case(db, ids, case_id)
+def evaluation_case(case_id: str, request: Request, db: DB, ids: Principal):
+    return evaluation.read_case(
+        db, ids, case_id, pilot_scope=request.app.state.settings.app_env == "production"
+    )
 
 
 @evaluation_router.get("/{case_id}/draft-matches", response_model=DraftMatches)
@@ -230,7 +292,14 @@ def draft_matches(case_id: str, version_id: UUID, db: DB, ids: Principal):
     "/{case_id}/decisions", response_model=ReviewDecision, status_code=201, dependencies=writes
 )
 def review_evidence(case_id: str, data: ReviewInput, request: Request, db: DB, ids: Principal):
-    return evaluation.save_decision(db, ids, case_id, data, request.state.request_id)
+    return evaluation.save_decision(
+        db,
+        ids,
+        case_id,
+        data,
+        request.state.request_id,
+        pilot_scope=request.app.state.settings.app_env == "production",
+    )
 
 
 class NoEvidence(BaseModel):
@@ -421,8 +490,15 @@ def search(
 
 
 @router.get("", response_model=SourcePage)
-def sources(db: DB, ids: Principal, page: Annotated[int, Query(ge=1, le=10000)] = 1):
-    return service.list_sources(db, ids, page)
+def sources(
+    request: Request, db: DB, ids: Principal, page: Annotated[int, Query(ge=1, le=10000)] = 1
+):
+    settings = request.app.state.settings
+    screened = settings.app_env == "production"
+    return service.list_sources(db, ids, page) | {
+        "screened_uploads": screened,
+        "upload_available": not screened or settings.clamav_port is not None,
+    }
 
 
 @router.post("", response_model=Source, status_code=201, dependencies=writes)
@@ -440,18 +516,23 @@ async def upload_pdf(
     request: Request,
     db: DB,
     ids: Principal,
+    limits: Annotated[Limiter, Depends(limiter)],
     title: Annotated[str | None, Query(max_length=120, pattern=r"^[^\x00-\x1f\x7f]*$")] = None,
     replaces: UUID | None = None,
     metadata: Annotated[str | None, Query(max_length=1800)] = None,
 ):
-    if request.app.state.settings.app_env == "production":
-        raise IdentityError(403, "PDF_DEMO_ONLY", "PDF upload is available in the local demo.")
+    settings = request.app.state.settings
+    screened = settings.app_env == "production"
+    if screened and settings.clamav_port is None:
+        raise IdentityError(503, "PDF_SCREENING_UNAVAILABLE", "PDF screening is not configured.")
     if request.headers.get("content-type") != "application/pdf":
         raise IdentityError(415, "PDF_REQUIRED", "Choose a PDF file.")
     try:
         reference = rag.Metadata.model_validate_json(metadata) if metadata else None
     except ValidationError:
         raise IdentityError(422, "INVALID_SOURCE_METADATA", "Check the PDF metadata.") from None
+    if screened:
+        await run_in_threadpool(limits.check, "screened_pdf_upload", str(ids[0]), 12, 3600)
     content = bytearray()
     try:
         async with timeout(8):
@@ -470,6 +551,7 @@ async def upload_pdf(
         title=title.strip() if title else None,
         replaces=replaces,
         metadata=reference,
+        screened=screened,
     )
 
 
@@ -483,6 +565,18 @@ def retry_pdf(version_id: UUID, db: DB, ids: Principal):
     return service.retry_pdf(db, ids, version_id)
 
 
+@router.get("/{version_id}/advisor-review", response_model=AssignmentStatus)
+def read_assignment(version_id: UUID, db: DB, ids: Principal):
+    return {"review": source_reviews.admin_review(db, ids, version_id)[2]}
+
+
+@router.patch("/{version_id}/advisor-review", response_model=SourceReview, dependencies=writes)
+def set_assignment(
+    version_id: UUID, data: ReviewAssignment, request: Request, db: DB, ids: Principal
+):
+    return source_reviews.assign(db, ids, version_id, data, request.state.request_id)
+
+
 @router.post("/{version_id}/{action}", response_model=Source, dependencies=writes)
 def transition(
     version_id: UUID,
@@ -493,5 +587,40 @@ def transition(
     ids: Principal,
 ):
     return service.transition(
-        db, ids, version_id, action, data.expected_revision, request.state.request_id
+        db,
+        ids,
+        version_id,
+        action,
+        data.expected_revision,
+        request.state.request_id,
+        production=request.app.state.settings.app_env == "production",
     )
+
+
+@advisor_router.get("", response_model=AssignedSources)
+def assigned_sources(
+    db: DB,
+    ids: Principal,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    view: Literal["all", "pending", "reviewed"] = "all",
+):
+    return source_reviews.assignments(db, ids, page, view)
+
+
+@advisor_router.get("/{version_id}", response_model=AssignedSource)
+def assigned_source(version_id: UUID, db: DB, ids: Principal):
+    return source_reviews.assignment_detail(db, ids, version_id)
+
+
+@advisor_router.get("/{version_id}/pages/{number}", response_model=AssignedPdfPage)
+def assigned_page(
+    version_id: UUID, number: Annotated[int, Field(ge=1, le=100)], db: DB, ids: Principal
+):
+    return source_reviews.page(db, ids, version_id, number)
+
+
+@advisor_router.post("/{version_id}/decision", response_model=SourceReview, dependencies=writes)
+def decide_source(
+    version_id: UUID, data: AdvisorDecision, request: Request, db: DB, ids: Principal
+):
+    return source_reviews.decide(db, ids, version_id, data, request.state.request_id)

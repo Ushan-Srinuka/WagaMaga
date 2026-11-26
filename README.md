@@ -4,20 +4,18 @@ WagaMaga AI helps Sri Lankan farmers find cited cultivation guidance and review 
 
 ## Current status
 
-M0 foundation is complete. UM1 user management is implemented locally: farmer registration, login/logout, rotated revocable sessions, own-account display-name editing and administrator account search/detail/role/status actions. Existing React screens now share the selected creamy green/sage theme, local Plus Jakarta Sans typography, rounded cards and forest/sprout actions. RAG, proposals, advisor case review and weather remain unimplemented. See TESTING.md for current local evidence; the expanded UM1 CI workflow is configured but has not run remotely for these uncommitted changes.
-
-Farm Records now includes FR-B persistence, FR-C owner-only APIs and FR-D connected screens: farms, cultivations, observations, stage confirmation, archives and readable private history on current schema `0007_support`, including farm restore and confirmed workspace deletion with retained historical records. Farmer login returns to `/`, where the website header and hero provide Add Farm, a private farm selector and the next crop/observation action. The separate dashboard and mobile bottom bar were removed after the user clarified the intended landing-page experience. New farms offer district/village entry and optional browser location; manual records do not establish agricultural support outside the planned chilli/Anuradhapura pilot. The journey is verified locally on desktop/mobile against PostgreSQL; remote CI remains pending. See [FARM_RECORDS.md](docs/FARM_RECORDS.md); no farmer records or default accounts are seeded into development. RAG, proposals, advisor sharing and weather remain future work.
-
-A public homepage opens at `/`, introduces the product and links to registration/login. Its reference-led layout uses a generated chilli-field photo hero, creamy green/sage surfaces, forest/sprout accents, rounded cards and locally hosted Plus Jakarta Sans. Product vision, planned features, the future workflow and trust principles explain the direction; sample panels are labelled illustrative. The combined design foundations are in docs/UI_DESIGN.md. Home remains available without an API connection.
-
-Help is available at `/help`, including getting-started instructions and common questions. Farmers can submit private website-support requests at `/support`; administrators read/reply only to submitted conversations at `/admin/support`, with generic in-app notices and Open/In progress/Resolved states. No farm details are attached automatically. Configure the optional public `SUPPORT_CONTACT_EMAIL` before relying on signed-out contact; this is not password recovery or email delivery. See [SUPPORT.md](docs/SUPPORT.md). Administrator login opens `/admin/overview` for account, farm/cultivation and support count summaries; farmer account pages add counts only. Private farm details remain inaccessible to admins. See [ADMIN_REPORTING.md](docs/ADMIN_REPORTING.md). Broader reporting remains pending.
+- **Farmer workspace.** Sign in to the homepage and open **Ask about growing chilli** for published references and citations. The same page provides **My Farms**, **Add farm** and the next crop or observation action. Private records include farms, cultivations, crop stages, observations and history, with archive and farm restore controls.
+- **Daily planning.** Cultivation pages put **Add observation**, **Add task** and **This week** below the crop heading. The seven-day planner separates overdue work and shows rainfall warnings beside affected tasks. Farmers can manage tasks, use optional forecasts and alerts, and review suggested changes before accepting them.
+- **Questions and sources.** Within a chilli cultivation, **Ask about growing chilli** uses eligible reviewed PDFs and **Ask about my tasks** reads that cultivation’s planner. Administrators manage source versions, and assigned advisors can review source drafts. The real-farmer Anuradhapura advisory pilot remains disabled pending approved-source evaluation and independent review of answer support and applicability.
+- **Roles and support.** Advisors sign in to **Assigned plan reviews** and can act on assigned snapshots. Administrators land on a count-only overview and manage accounts, knowledge sources and submitted support conversations. Public Help remains available at `/help`.
+- **Verification.** The [testing record](docs/TESTING.md) distinguishes local checks using synthetic accounts from CI for published candidates and from evaluation required for the real-farmer pilot. Missing account recovery and real-user retention decisions remain release limitations.
 
 ## Stack
 
 - React + strict TypeScript + Vite, Node.js 24 and npm 11.
 - FastAPI, CPython 3.14 and uv; synchronous SQLAlchemy/Psycopg and Alembic.
 - PostgreSQL 18 with pgvector in Docker; API/frontend/worker run directly on Windows initially.
-- Private local document directory for future ingestion; no provider keys are needed for M0.
+- Private PDF storage and a separate worker for extraction, queued questions, weather checks and reminders.
 
 ## Quick start on Windows
 
@@ -46,11 +44,11 @@ npm.cmd --prefix frontend run dev
 ```
 
 ```powershell
-# Terminal 3: worker foundation heartbeat
+# Terminal 3: background worker
 .\scripts\uv.ps1 run python -m app.worker
 ```
 
-Open the [homepage](http://127.0.0.1:5173) for the public introduction, then choose Create account or Sign in. The homepage works without an API connection; account actions require the API/database. Use [Swagger](http://127.0.0.1:8000/docs) for API exploration and [/connection](http://127.0.0.1:5173/connection) for the original foundation status screen. Readiness at `/health/ready` returns 503 until PostgreSQL, pgvector and migration `0007_support` are available. The worker reports readiness; durable job handlers are future work.
+Open the [homepage](http://127.0.0.1:5173) for the public introduction, then choose Create account or Sign in. The homepage works without an API connection; account actions require the API/database. Use [Swagger](http://127.0.0.1:8000/docs) for API exploration and [/connection](http://127.0.0.1:5173/connection) for the original foundation status screen. Readiness at `/health/ready` returns 503 until PostgreSQL, pgvector and the current migration head are available. The worker processes queued jobs and scheduled checks.
 
 To create the first administrator, run the following in your own terminal after setup/migration and enter the requested name, email and password. The password is hidden; no default administrator is installed. Once an administrator exists, this command refuses further bootstrap attempts. See DEVELOPMENT.md for account and recovery limits.
 

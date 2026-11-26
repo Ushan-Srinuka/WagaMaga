@@ -196,9 +196,7 @@ it('clears rendered report values when a refreshed session is revoked', async ()
     throw new ApiError(401, 'Revoked')
   }
   fireEvent.click(screen.getByRole('button', { name: 'Refresh overview' }))
-  expect(
-    await screen.findByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  expect(await screen.findByRole('heading', { name: 'Log in' })).toBeVisible()
   expect(
     screen.queryByRole('region', { name: 'Administration summary' }),
   ).not.toBeInTheDocument()

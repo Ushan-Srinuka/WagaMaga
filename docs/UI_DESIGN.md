@@ -4,7 +4,7 @@ Status: M0 connection, UM1 account screens, administrator audit history and in-a
 
 ## Design sources and scope
 
-Connected Farm Records screens are specified in [FARM_RECORDS.md](FARM_RECORDS.md): farmer-only My Farms, farm/cultivation details, observations, explicit stage confirmation and labelled revision/archive history. FR-D connects the FR-C APIs using the shared creamy green theme, warm-white cards, local font and native confirmation dialog. Desktop/mobile layouts reflow into single-column cards/forms without horizontal scrolling. My Farms appears only for farmers in the workspace and signed-in homepage. Farm Records is marked Available on the homepage; its sample remains Illustrative, with guidance/planning still Planned.
+Connected Farm Records screens are specified in [FARM_RECORDS.md](FARM_RECORDS.md): farmer-only My Farms, farm/cultivation details, observations, explicit stage confirmation and labelled revision/archive history. FR-D connects the FR-C APIs using the shared creamy green theme, warm-white cards, local font and native confirmation dialog. Desktop/mobile layouts reflow into single-column cards/forms without horizontal scrolling. My Farms appears only for farmers in the workspace and signed-in homepage. Home links to the connected farmer tools.
 
 Archive keeps details/history readable and removes write controls. Unknown soil/stage stays explicitly unknown; planned dates never imply agronomic readiness. Stage confirmation shows actor/time. Observation input states its device timezone and saved display uses the farm timezone; decimal strings are preserved. History renders labelled fields and plain text, never HTML or raw implementation JSON. Record requests and drafts are not stored in localStorage/sessionStorage.
 
@@ -32,9 +32,11 @@ The combined cultivation diary and **I missed this task** are available inside t
 
 ### Cultivation diary and reminders
 
+The crop page shows the farm name, planting date and links to Field notes, Planner and, for chilli crops, Ask Chilli AI. The planner starts with today’s tasks, followed by overdue work and the coming days. Pending tasks have a Mark done button. Forecast and threshold controls are under Weather and alerts. The overview also provides the crop record, diary and reviewed sources.
+
 Open **Cultivation history** to see the diary first, with farm-local timestamps and links to detail views. Manual edits show the previous and saved dates when the date changed. Weather decisions distinguish a kept date from an executed reschedule. Pending suggestions remain under weekly review. **Notifications** shows due-soon and overdue task reminders for the farmer. Completed, cancelled and moved tasks stop showing outdated reminders.
 
-In a chilli cultivation, **Farm tasks → Ask Chilli AI about this planner** answers supported English questions about the next seven farm-local days, pending overdue tasks and the reason for a saved date suggestion. The answer shows the saved forecast and the suggestion’s current state. **Review date options** opens the same forecast-based review controls as the seven-day planner.
+In a chilli cultivation, **Farm tasks → Ask about my tasks** answers supported English questions about the next seven farm-local days, pending overdue tasks and the reason for a saved date suggestion. The answer shows the saved forecast and the suggestion’s current state. **Review date options** opens the same forecast-based review controls as the seven-day planner.
 
 ### Manual tasks
 
@@ -50,15 +52,17 @@ Within **Farm tasks**, **Suggested plans** shows a labelled portfolio example be
 
 ## Screens and navigation
 
-### Farmer onboarding follow-up - 19 November 2026
+### Farmer home and navigation
 
-The user's correction supersedes the initial separate dashboard: farmer entry belongs in the website landing-page header and hero. Farmer login and restored-session login visits return to `/`; administrators open `/admin/overview` and advisors `/account`. `/dashboard` remains only a farmer-protected redirect home. The workspace logo and Home link return to the website. Remove the dashboard checklist, farm preview grid and fixed mobile bottom navigation.
+Farmer entry is in the website landing-page header and hero. Farmers sign in to `/`, administrators to `/admin/overview`, and advisors to `/advisor`. `/dashboard` redirects farmers home. The workspace logo and Home link return to the website.
 
-The homepage retains its green field-photo hero and public product sections. Its header now exposes My Farms and Add a farm in the navigation and a prominent Add Farm action beside account controls. The hero headline is “Your farm. All in one place.” A wide cream action bar with a green edge places farm entry directly beneath the introduction. New farmers get Add my farm; visitors get Get started and a login link. Account restoration/offline states stay explicit and do not query private farms before authentication. On mobile the action bar stacks and the website navigation remains accessible without a bottom app bar.
+The Advisor inbox links to pending plan and PDF assignments. Each full list has Needs review and Recently reviewed filters. Recently reviewed covers the past 30 days within current assignment access. Both detail screens require an outcome, a reason and explicit submission. The recorded outcome, reason and timestamp appear on the detail screen. PDF reviewers can jump to a page and keep their draft reason while navigating extracted text.
 
-For signed-in farmers, the hero loads up to 100 owned active farms into a labelled selector. Selecting a farm remounts its next-action reader; it reads the first active cultivation and its observation count, then links to Add what you are growing, Record first observation or Open crop records. Loading/failure falls back to Open farm rather than claiming a setup milestone. List failure has retry and a direct records link; archived and additional records stay available through View all farm records. Over 100 farms uses that paginated records page. Key private hero state by user ID and ignore late responses on account/selection changes. No checklist completion or agricultural readiness is inferred.
+Signed-in farmers see **Ask Chilli AI**, **Add a field note**, **My Farms**, and **Planner** on Home. The first action opens general questions without requiring farm setup. **Ask about my crop** opens the private chilli crop chat. The AI screens have a visible Home link.
 
-New cultivation creation and the hero observation action open the existing observation form using a consumed `observe=1` intent. Parent editing/archive controls stay disabled while that draft is open. Archived cultivations never gain a write form from this URL. The planned planner-first direction still applies when those features exist.
+Field notes, Planner and crop chat share a paginated chooser for the farmer’s active farms and crops. A single farm and crop open directly. Crop chat only offers chilli plantings. A farmer with no farm or crop sees the corresponding setup action. Failed reads show a retry. My Farms lists crops before the collapsible Farm details controls.
+
+A field-note shortcut opens the existing observation form with the note box focused. The device supplies the initial date and time. Farmers can change the time or record soil moisture before saving. Archive rules, version checks and history still apply.
 
 New farm forms start with a name chosen by the farmer, a district selector with no default district and a village/town field. A free-text location mode supports existing descriptions and other locations. The 25-district reference is bundled locally, with provenance in D27; choosing a district never supplies coordinates or establishes guidance eligibility. District mode saves `village, district District, Sri Lanka` in the existing location label, bounded to 200 characters. Editing begins with the exact existing label and timezone; unrelated edits do not reformat them.
 
@@ -66,9 +70,9 @@ Exact location is collapsed and optional. Use my current location requests brows
 
 ### Public landing page
 
-The public opening page is `/`, implemented after UM1 at the user's request. Its reference-led layout has a light header, generated chilli-field photo hero, forest text, sprout green pill buttons, creamy green canvas, sage-tinted sections and rounded warm-white cards. Plus Jakarta Sans now supplies homepage headings and body text. The page follows a product-vision section with three feature previews, a three-step planned workflow, trust/control principles, an account invitation and grouped footer links. Section navigation wraps to a second header row on smaller screens, and cards stack on mobile. Farm Records is Available, guidance/planning remain Planned, and all sample panels retain Illustrative preview labels; previews contain no working farming controls, fabricated source citations or agronomic recommendations. Home restores the current session before rendering account navigation: signed-in users see their name, My account, Notifications with an unread badge and farmer-only My Farms; signed-out users see Log in and Create account. A temporary API outage is labelled as unknown and offers retry, rather than falsely showing signed out. Hero and footer account links follow the same session state; protected URLs retain their server checks.
+The public home page has one sentence about the app, a chilli-field image and account entry links. **Log in to ask** returns a farmer to the question box. Normal farmer sign-in opens Home. The header links to Help. Home waits for the restored session and provides retry on connection failure.
 
-The local hero is an illustrative AI-generated image, disclosed in the footer and alt text, without a claim that it documents a real farm. The original PNG and an optimized 313,452-byte WebP are in frontend/public/images/; its [provenance and exact prompt](../frontend/public/images/README.md) record the built-in image-generation mode. CSS controls responsive crops and contrast. The new font is self-hosted with its license; there is no runtime external image/font host or new package dependency.
+The local hero is an illustrative AI-generated image, documented with the image asset, without a claim that it documents a real farm. The original PNG and an optimized 313,452-byte WebP are in frontend/public/images/; its [provenance and exact prompt](../frontend/public/images/README.md) record the built-in image-generation mode. CSS controls responsive crops and contrast. The new font is self-hosted with its license; there is no runtime external image/font host or new package dependency.
 
 | Audience | Screens | Primary work |
 | --- | --- | --- |
@@ -80,11 +84,11 @@ The local hero is an illustrative AI-generated image, disclosed in the footer an
 | Administrator | User Management, Knowledge Documents, Document Processing, System Overview | Roles, publication and operating status |
 | Shared | Register, Login, configured recovery, Access Denied, Not Found | Identity and navigation outcomes |
 
-Manage cultivations inside farm details. Current farmer entry stays in the website header/hero on desktop and mobile. Weather, alerts, Ask and Planner navigation remain future work, to be placed when their workflows are implemented; do not add an empty dashboard or nonfunctional navigation for them.
+Choose a farm under My Farms to open its crops. Open Farm details to edit the farm, archive it or view its history.
 
 ## Combined visual foundations
 
-Aim for a calm editorial presentation: clear hierarchy, useful whitespace, biological greens and warm light surfaces. Keep the photographic hero and dark account invitation as the strongest visual anchors. Avoid decorative textures, glowing fake live indicators and heavy card shadows.
+Use large labelled actions, the existing chilli-field photo, and warm light surfaces. Put daily actions before the photo on phones.
 
 ### Shared palette
 
@@ -115,13 +119,13 @@ The [self-hosted Latin font record](../frontend/public/fonts/plus-jakarta-sans/R
 
 ### Layout, shape and depth
 
-Use a consistent 4/8px spacing rhythm, 24px desktop card gaps and a 1200px maximum homepage wrapper. Outer margins are 48px desktop, 32px tablet and 20px mobile. Homepage feature/workflow/trust groups use three equal columns on desktop and stack below 700px; the supplied 12/8/4-column scheme remains a broader layout reference, not a claim that every current section implements that grid.
+The home page uses a full-width chilli-field hero with a dark overlay behind the controls. The two main actions take a full row each. My Farms and Planner share the following row. The homepage and account pages use white and mint for hero headings and sprout green with forest text for primary actions. Field notes uses soft sage. My Farms and Planner use forest green with light borders. Below the hero are Chilli AI with an example question, three farm tool cards and a Getting started guide. The header and footer link to all three sections. The mobile header uses a labelled Menu button. The footer links to the Help centre and offers Contact support to signed-in farmers.
 
 Use 24px card radii/padding, 16px inner panels, 32px desktop account-invitation corners and full-pill actions/badges. Cards have a fine sage border; dark invitation elevation uses a subtle forest-tinted ambient shadow. Avoid hover transforms that move nearby content, respect reduced motion and retain visible focus. Homepage account actions are at least 48px high, with the compact desktop header action at least 44px.
 
 ### Components and future screens
 
-Structural save/confirmation actions use forest/white; homepage and auth account-entry actions use sprout/forest. Ghost actions over the photo need a visible edge and white text. Existing fields use at least 48px height, 16px corners, visible boundaries and a clear focus outline; password toggles retain accessible names and 44px targets without overlapping input text. Search, buttons, role badges and navigation use pill shapes. Destructive controls and disabled-account states retain their warning colours/wording. Planned badges and illustrative panels remain distinct from functional controls. Do not add gauges, forecasts or photo-diagnostic components merely to demonstrate this design language.
+Structural save/confirmation actions use forest/white; primary actions on the homepage and account-entry pages use sprout and forest. Ghost actions over the photo need a visible edge and white text. Existing fields use at least 48px height, 16px corners, visible boundaries and a clear focus outline; password toggles retain accessible names and 44px targets without overlapping input text. Search, buttons, role badges and navigation use pill shapes. Destructive controls and disabled-account states retain their warning colours/wording. Planned badges and illustrative panels remain distinct from functional controls. Do not add gauges, forecasts or photo-diagnostic components merely to demonstrate this design language.
 
 ### Account and shared-screen layouts
 
@@ -131,7 +135,7 @@ Use consistent buttons, form fields, status badges, evidence cards, task rows, a
 
 ## Required interaction details
 
-Admin Overview (D30) is the administrator login destination `/admin/overview`. The website still opens `/` for farmers; advisors open `/account`. Use four sage summary cards, account-state/role counts, farm/cultivation splits and support statuses with a snapshot time, useful management links and explicit count/privacy definitions. Show real zero only after successful reads; loading/failure/denial never invent totals. The farmer account page adds count-only Farm record summary; removed/non-farmer accounts have no summary. Count cards do not open private farms. Enabled accounts are not advertised as active visitors, and no fabricated charts or live health indicators are added. Admin Overview is reachable through account navigation and the administrator website header. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md).
+Admin Overview (D30) is the administrator login destination `/admin/overview`. The website still opens `/` for farmers; advisors open `/advisor/cases`. Use four sage summary cards, account-state/role counts, farm/cultivation splits and support statuses with a snapshot time, useful management links and explicit count/privacy definitions. Show real zero only after successful reads; loading/failure/denial never invent totals. The farmer account page adds count-only Farm record summary; removed/non-farmer accounts have no summary. Count cards do not open private farms. Enabled accounts are not advertised as active visitors, and no fabricated charts or live health indicators are added. Admin Overview is reachable through account navigation and the administrator website header. See [ADMIN_REPORTING.md](ADMIN_REPORTING.md).
 
 Help/support (D29): add Help to the website header/footer, account navigation and login; `/help` uses the existing cream/green theme with a short getting-started guide, accessible FAQ disclosure controls and a public contact section. Signed-in farmers get Contact support/My support requests; administrators get Support inbox. The public contact email is configured, never invented, and an unavailable state is explicit. No fake password-reset or advisor action is shown.
 
@@ -172,13 +176,15 @@ Current paths are /login, /register, /account, /admin/users and /admin/users/:id
 After M0, complete the early UM1 scope and its review/check gates. The later V0 journey adds cultivation context, question/source display, proposal comparison and acceptance result. Expand to complete domain screens in V1. Pair UI work with its API contract and failure states; a visual prototype alone does not establish working authentication or permissions.
 ## Landing-page Help entry — 19 November 2026
 
-The landing page includes a simple sage panel immediately above the footer, with “Need a hand with your farm records?” and two actions. Visit Help Centre opens `/help`; Contact Support opens `/support/new` for signed-in farmers and `/help#sign-in` for other visitors. Actions sit beside the text when space permits and stack on mobile. Existing header/footer Help links remain available.
+The home footer includes the WagaMaga wordmark, a short product description and links to Chilli AI, Farm tools, Getting started and the Help centre. Contact support opens `/support/new` for signed-in farmers.
 
 ## Knowledge Sources
 
+In production the administrator form requests the source URL, reuse basis and applicability metadata. The version card shows screening and extraction status. On a ready draft, open **Advisor review** to assign, reassign or revoke access before a decision. Advisors open **Knowledge review** from their account navigation, page through extracted text and record approval or requested changes with a reason. The administrator completes review and publication after approval.
+
 Source details display the full version ID alongside the checksum and metadata. Reference answers offer a keyboard-operable supporting passage disclosure with a retry path for temporary errors. The chilli pilot route shows the Anuradhapura scope and the release status returned by the API.
 
-**Ask Chilli AI about reviewed PDFs** opens a private conversation from a chilli cultivation. The farmer can reopen it from **Saved conversations**, inspect the cited page, or confirm deletion. The answer form makes the Gemini choice explicit and shows the local district and crop stage separately from the answer.
+**Ask about my crop** opens private crop chat from a chilli cultivation. The farmer can reopen it from **Saved conversations**, inspect the cited page, or confirm deletion. The answer form makes the Gemini choice explicit and shows the local district and crop stage separately from the answer.
 
 **Published chilli references** shows the corpus version, source locator and English paraphrase for each passage. In the local PDF workflow, set a source title or start from **Upload replacement PDF** on a published version. The publish dialog identifies the effect on the previous version. On farmer answers, **Show supporting passage** expands the cited source note on demand.
 
@@ -190,7 +196,7 @@ The signed-in **Chilli questions** screen starts with nursery site, irrigation a
 
 An overdue pending task in **Farm tasks** shows **I missed this task**. The owner selects a date and can record why the task was missed. The comparison shows the existing date, proposed date and any matching current forecast. **Confirm new date** and **Keep current date** both appear in **Cultivation history → Plan decisions**.
 
-**Seven-day planner** shows the farm's calendar and a separate overdue list. A task opens in the same cultivation's task controls. **Review suggestion** compares the current and proposed dates with rainfall evidence and the recorded stage. The sharing form explains which fields the named advisor receives. **Assigned plan reviews** is visible to advisor accounts and offers clearance, decline or a request for changes with a reason. The farmer sees the advisor decision before confirming the task change.
+**Seven-day planner** shows the seven farm-local days with readable dates and a separate overdue list. Rain alerts sit next to the affected task and its review action. A task opens in the same cultivation's task controls. **Review suggestion** compares the current and proposed dates with rainfall evidence and the recorded stage. The sharing form explains which fields the named advisor receives. **Assigned plan reviews** is visible to advisor accounts and offers clearance, decline or a request for changes with a reason. The farmer sees the advisor decision before confirming the task change.
 
 After **Request changes**, the farmer sees the advisor's reason and can use **Revise suggested date** to send another date back. Each version is visible in **Weekly suggestion history**. Review notifications open the specific suggestion for the recipient. **Review weekly changes** compares several proposed date changes and lets the farmer select ready changes. The result lists the dates saved in that transaction.
 

@@ -1080,6 +1080,10 @@ def test_weekly_suggestion_requires_assigned_clearance_when_stage_is_missing(
         == 409
     )
     assert call(client, "POST", decision, advisor, clearance).status_code == 200
+    assert call(client, "GET", inbox + "?view=pending", advisor).json()["total"] == 0
+    [reviewed] = call(client, "GET", inbox + "?view=reviewed", advisor).json()["items"]
+    assert reviewed["id"] == renewed["id"] and reviewed["assigned_at"]
+    assert call(client, "GET", inbox + "?view=reviewed", outsider).json()["total"] == 0
     assert call(client, "GET", cultivation + "/tasks", owner).json()["items"] == [task]
     assert call(client, "GET", route, owner).json()["plan"]["state"] == "cleared"
     first = accept(renewed)
@@ -1346,6 +1350,10 @@ def test_reviewed_pdf_search_scopes_passages_and_fuses_embeddings(
     assert call(client, "GET", passage_url, owner).json() == passage
     assert call(client, "GET", passage_url, farmer_elsewhere).status_code == 404
     settings = client.app.state.settings
+    with monkeypatch.context() as production:
+        production.setattr(settings, "app_env", "production")
+        assert search("irrigation")["items"] == []
+        assert call(client, "GET", passage_url, owner).status_code == 404
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic-key"))
     monkeypatch.setattr(settings, "rag_embedding_pdf_checksums", {source["checksum"]})
     seen = []

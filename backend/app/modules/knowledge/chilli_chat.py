@@ -14,6 +14,7 @@ from app.modules.farms.models import CHILLI_ID
 from app.modules.identity.security import IdentityError
 from app.modules.knowledge import rag
 from app.modules.knowledge.models import ChilliChat, ChilliTurn
+from app.modules.knowledge.pilot import release_configured
 
 MAX_TURNS = 20
 PARTIAL_ADVICE = re.compile(
@@ -109,7 +110,7 @@ def delete(db, ids, farm_id, cultivation_id, chat_id):
     db.delete(chat_for(db, actor, cultivation, chat_id, lock=True))
 
 
-def history(db, ids, farm_id, cultivation_id, chat_id):
+def history(db, ids, farm_id, cultivation_id, chat_id, settings):
     actor, farm, cultivation = context(db, ids, farm_id, cultivation_id)
     chat = chat_for(db, actor, cultivation, chat_id)
     turns = db.scalars(
@@ -120,7 +121,10 @@ def history(db, ids, farm_id, cultivation_id, chat_id):
     district = rag.district_of(farm.location)
     params = {"crop": "chilli", "region": district, "today": farms.local_today(db, farm)}
     citations = rag.eligible_passages(
-        db, params, [turn.passage_id for turn in turns if turn.passage_id]
+        db,
+        params,
+        [turn.passage_id for turn in turns if turn.passage_id],
+        screened_only=settings.app_env == "production",
     )
     return History(
         **ChatSummary.model_validate(chat).model_dump(),
@@ -159,6 +163,9 @@ def follow_up(question):
 
 
 def answer(db, ids, farm_id, cultivation_id, farm, cultivation, chat, data, settings, charge):
+    screened_only = settings.app_env == "production"
+    if screened_only and not release_configured(settings):
+        return "no_evidence", None, None
     if not rag.district_of(farm.location) or (
         re.search(r"\b(current|my) stage\b", data.question, re.I)
         and not cultivation.confirmed_stage
@@ -192,7 +199,13 @@ def answer(db, ids, farm_id, cultivation_id, farm, cultivation, chat, data, sett
     if previous and previous.passage_id and previous.passage_id not in candidates:
         scope = rag.scope(db, ids, farm_id, cultivation_id)
         candidates.update(
-            rag.eligible_passages(db, scope, [previous.passage_id], answer_checksums=allowed)
+            rag.eligible_passages(
+                db,
+                scope,
+                [previous.passage_id],
+                answer_checksums=allowed,
+                screened_only=screened_only,
+            )
         )
     # Recheck all references just before the provider uses their text.
     eligible = rag.eligible_passages(
@@ -200,6 +213,7 @@ def answer(db, ids, farm_id, cultivation_id, farm, cultivation, chat, data, sett
         rag.scope(db, ids, farm_id, cultivation_id),
         list(candidates),
         answer_checksums=allowed,
+        screened_only=screened_only,
     )
     choices = suitable_quotes([eligible[key] for key in candidates if key in eligible])
     if not choices:
@@ -251,6 +265,7 @@ def ask(
             rag.scope(db, ids, farm_id, cultivation_id),
             [passage_id],
             answer_checksums=settings.gemini_approved_pdf_checksums,
+            screened_only=settings.app_env == "production",
         )
         citation = current.get(passage_id)
         if citation is None:

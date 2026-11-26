@@ -8,7 +8,7 @@ import './support.css'
 const questions = [
   [
     'How do I start?',
-    'Sign in, choose Add farm in the website header or hero, and give your farm a name and location. Next add what you are growing, a planting date and planted area. You can then record field observations.',
+    'Open My Farms and choose Add your first farm. Give it a name and location, then choose Add a crop. From Home, choose Add a field note whenever you notice something.',
   ],
   [
     'Do I need latitude and longitude?',
@@ -16,7 +16,7 @@ const questions = [
   ],
   [
     'Where are my archived farms?',
-    'Open My Farms and choose Farm status → Archived. Archive keeps records and history, and makes the farm read-only. Open the farm and choose Restore farm to use it again. Separately archived crops remain archived.',
+    'Open My Farms and choose Farm status → Archived. Archive keeps records and history, and makes the farm read-only. Open Farm details and choose Restore farm to use it again. Separately archived crops remain archived.',
   ],
   [
     'Does Delete farm erase all data?',
@@ -65,7 +65,6 @@ export default function HelpPage() {
       </header>
       <main id="help-main" className="help-container">
         <section className="help-intro">
-          <p className="eyebrow">A little help, when you need it</p>
           <h1>How can we help?</h1>
           <p>
             Get started with your farm records, find an answer or send a
@@ -77,7 +76,7 @@ export default function HelpPage() {
             </a>
             {user?.role === 'farmer' && (
               <Link className="record-link" to="/support/new">
-                Contact support ↗
+                Contact website support
               </Link>
             )}
           </div>
@@ -102,8 +101,8 @@ export default function HelpPage() {
             <li>
               <strong>Keep field notes</strong>
               <p>
-                Add an observation when you notice something. You can edit your
-                records and review earlier versions.
+                Choose Add a field note on Home. Write what you saw, then choose
+                Save note.
               </p>
             </li>
           </ol>

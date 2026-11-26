@@ -97,11 +97,9 @@ export default function AccountPage() {
   return (
     <>
       <div className="page-intro">
-        <p className="eyebrow">Your space</p>
         <h1>
           My account<span>.</span>
         </h1>
-        <p>Keep your details up to date. Make yourself at home.</p>
       </div>
       <div className="account-columns">
         <section
@@ -110,8 +108,7 @@ export default function AccountPage() {
         >
           <div className="panel-title">
             <div>
-              <span className="section-number">01 / Profile</span>
-              <h2 id="profile-title">A name to grow with.</h2>
+              <h2 id="profile-title">Edit profile</h2>
             </div>
             <span className="profile-monogram" aria-hidden="true">
               {user.display_name.slice(0, 1)}
@@ -228,15 +225,6 @@ export default function AccountPage() {
                 </dd>
               </div>
             </dl>
-          </section>
-          <section className="gentle-note">
-            <span aria-hidden="true">✳</span>
-            <h2>Your account. Your space.</h2>
-            <p>
-              Your role determines the account tools available to you. Account
-              management never grants access to someone else’s private farming
-              records.
-            </p>
           </section>
         </aside>
       </div>

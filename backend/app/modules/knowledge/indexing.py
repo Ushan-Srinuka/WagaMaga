@@ -18,6 +18,7 @@ def process_batch(engine, settings):
         "model": embeddings.MODEL,
         "version": INDEX_VERSION,
         "limit": embeddings.MAX_BATCH,
+        "screened_only": settings.app_env == "production",
     }
     with Session(engine) as db, db.begin():
         rows = (
@@ -28,6 +29,7 @@ def process_batch(engine, settings):
             JOIN knowledge_demo_versions v ON v.id = p.version_id
             JOIN knowledge_source_pdfs pdf ON pdf.version_id = v.id
             WHERE v.status = 'published' AND pdf.state = 'ready'
+            AND (NOT :screened_only OR pdf.screening_required)
             AND v.rag_metadata->>'access' = 'farmers'
             AND v.checksum = ANY(CAST(:allowed AS text[]))
             AND COALESCE(

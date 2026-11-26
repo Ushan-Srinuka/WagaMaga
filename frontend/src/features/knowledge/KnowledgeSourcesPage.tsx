@@ -9,6 +9,7 @@ import KnowledgeAnswerPreview from './KnowledgeAnswerPreview'
 import KnowledgeSearch from './KnowledgeSearch'
 import PdfMetadataFields, { type PdfMetadata } from './PdfMetadataFields'
 import type { SourcePassage } from './ResearchPassage'
+import SourceReviewAssignment from './SourceReviewAssignment'
 
 const path = '/admin/knowledge/sources'
 const actions = {
@@ -31,17 +32,26 @@ type Source = {
   processing: 'queued' | 'ready' | 'failed' | 'deleted'
   processing_error: string | null
   retryable?: boolean
+  screening_required: boolean
 }
-type SourcePage = { items: Source[]; has_more: boolean }
+type SourcePage = {
+  items: Source[]
+  has_more: boolean
+  screened_uploads: boolean
+  upload_available: boolean
+}
 type PdfPage = { number: number; text: string }
 
 const pdfErrors: Record<string, string> = {
   encrypted: 'Use a PDF without password protection.',
   page_limit: 'Use a PDF with 1–100 pages.',
-  text_limit: 'The extracted text exceeds the demo limit. Use a shorter PDF.',
+  text_limit: 'The extracted text exceeds the limit. Use a shorter PDF.',
   no_text: 'No selectable text was found. Scanned PDFs need OCR.',
   invalid_pdf: 'The worker could not read this PDF.',
   timed_out: 'Extraction took too long. Try a simpler PDF.',
+  scan_unavailable:
+    'PDF screening is temporarily unavailable. Retry after the scanner is restored.',
+  scan_rejected: 'PDF screening rejected this file.',
 }
 
 const labels = {
@@ -62,10 +72,22 @@ const descriptions = {
 }
 
 function saveError(error: unknown) {
+  if (
+    error instanceof ApiError &&
+    [
+      'ADVISOR_REVIEW_REQUIRED',
+      'PDF_SCREENING_REQUIRED',
+      'PDF_SCREENING_UNAVAILABLE',
+    ].includes(error.code)
+  )
+    return error.message
   if (error instanceof ApiError && error.status === 409)
     return 'The source status changed. Refresh the list before continuing.'
-  if (error instanceof ApiError && [408, 413, 415, 422].includes(error.status))
-    return error.status === 422 ? 'Choose a valid PDF file.' : error.message
+  if (
+    error instanceof ApiError &&
+    [408, 413, 415, 422, 429].includes(error.status)
+  )
+    return error.message
   return 'The change could not be confirmed. Refresh the list before trying again.'
 }
 
@@ -80,6 +102,10 @@ function readPdfMetadata(form: HTMLFormElement): PdfMetadata | undefined {
     published_on: String(fields.get('published_on') ?? '') || null,
     valid_until: String(fields.get('valid_until') ?? '') || null,
     access: fields.get('access') === 'farmers' ? 'farmers' : 'admin',
+    ...(fields.has('source_url') && {
+      source_url: String(fields.get('source_url')),
+      reuse_basis: String(fields.get('reuse_basis')),
+    }),
   }
 }
 
@@ -146,14 +172,18 @@ export default function KnowledgeSourcesPage() {
   const [replacement, setReplacement] = useState<Source | null>(null)
   const [metadataEnabled, setMetadataEnabled] = useState(false)
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [reviewId, setReviewId] = useState<string | null>(null)
   const [searchVersion, setSearchVersion] = useState(0)
   const sources = useRecord<SourcePage>(`${path}?page=${page}`)
   const references = useRecord<SourcePassage[]>(`${path}/references`)
   const save = useSave(saveError)
   const action = selected?.action
+  const screened = Boolean(sources.data?.screened_uploads)
+  const uploadAvailable = sources.data?.upload_available !== false
 
   function refresh() {
     setSelected(null)
+    setReviewId(null)
     save.reset()
     sources.reload()
     setSearchVersion((version) => version + 1)
@@ -164,8 +194,7 @@ export default function KnowledgeSourcesPage() {
       <div className="page-intro">
         <h1>Knowledge Sources</h1>
         <p>
-          Browse the published chilli references or manage PDF versions for
-          local review.
+          Browse the published chilli references and manage PDF source versions.
         </p>
         <Link to="/admin/knowledge/evaluation">
           Review the 10 chilli questions
@@ -201,139 +230,171 @@ export default function KnowledgeSourcesPage() {
         )}
       </section>
       <KnowledgeSearch sourcePath={path} key={`search-${searchVersion}`} />
-      <KnowledgeAnswerPreview
-        sourcePath={path}
-        key={`answer-${searchVersion}`}
-      />
-      <section className="panel" aria-label="Synthetic source versions">
+      {!screened && (
+        <KnowledgeAnswerPreview
+          sourcePath={path}
+          key={`answer-${searchVersion}`}
+        />
+      )}
+      <section
+        className="panel"
+        aria-label={screened ? 'Source versions' : 'Synthetic source versions'}
+      >
         <div className="button-row">
-          <button
-            className="primary"
-            disabled={save.busy || save.blocked || sources.loading}
-            onClick={() => {
-              void save.run(
-                () =>
-                  farmWrite<Source>(path, 'POST', { template: 'chilli-demo' }),
-                () => {
-                  setPage(1)
-                  sources.reload()
-                },
-              )
-            }}
-          >
-            Add synthetic guide
-          </button>
-          <button
-            disabled={save.busy || save.blocked || sources.loading}
-            onClick={() => {
-              void save.run(
-                () =>
-                  farmWrite<Source>(path, 'POST', {
-                    template: 'gemini-preview-pdf',
-                  }),
-                () => {
-                  setPage(1)
-                  sources.reload()
-                },
-              )
-            }}
-          >
-            Add Gemini demo PDF
-          </button>
+          {!screened && (
+            <>
+              <button
+                className="primary"
+                disabled={save.busy || save.blocked || sources.loading}
+                onClick={() => {
+                  void save.run(
+                    () =>
+                      farmWrite<Source>(path, 'POST', {
+                        template: 'chilli-demo',
+                      }),
+                    () => {
+                      setPage(1)
+                      sources.reload()
+                    },
+                  )
+                }}
+              >
+                Add synthetic guide
+              </button>
+              <button
+                disabled={save.busy || save.blocked || sources.loading}
+                onClick={() => {
+                  void save.run(
+                    () =>
+                      farmWrite<Source>(path, 'POST', {
+                        template: 'gemini-preview-pdf',
+                      }),
+                    () => {
+                      setPage(1)
+                      sources.reload()
+                    },
+                  )
+                }}
+              >
+                Add Gemini demo PDF
+              </button>
+            </>
+          )}
           <button disabled={save.busy} onClick={refresh}>
             Refresh sources
           </button>
         </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!file) return
-            const form = event.currentTarget
-            const metadata = readPdfMetadata(form)
-            void save.run(
-              () => uploadPdf(file, title, replacement?.id, metadata),
-              () => {
-                form.reset()
-                setFile(null)
-                setTitle('')
-                setReplacement(null)
-                setMetadataEnabled(false)
-                setPage(1)
-                sources.reload()
-              },
-            )
-          }}
-        >
-          {replacement && (
-            <p role="status">
-              Replacing <strong>{replacement.title}</strong>. The current PDF
-              stays published until the replacement is reviewed and published.{' '}
-              <button
-                type="button"
-                disabled={save.busy}
-                onClick={() => {
-                  setReplacement(null)
+        {!uploadAvailable && (
+          <Notice message="PDF screening is not configured for this installation." />
+        )}
+        {uploadAvailable && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!file) return
+              const form = event.currentTarget
+              const metadata = readPdfMetadata(form)
+              void save.run(
+                () => uploadPdf(file, title, replacement?.id, metadata),
+                () => {
+                  form.reset()
+                  setFile(null)
                   setTitle('')
+                  setReplacement(null)
                   setMetadataEnabled(false)
-                }}
-              >
-                Cancel replacement
-              </button>
-            </p>
-          )}
-          <div className="field">
-            <label htmlFor="knowledge-title">Source title</label>
-            <input
-              id="knowledge-title"
-              value={title}
-              maxLength={120}
-              disabled={save.busy}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </div>
-          <label className="field">
-            <input
-              type="checkbox"
-              checked={metadataEnabled}
-              disabled={save.busy}
-              onChange={(event) => setMetadataEnabled(event.target.checked)}
-            />
-            Include in the reviewed PDF library
-          </label>
-          {metadataEnabled && (
-            <PdfMetadataFields
-              key={replacement?.id}
-              previous={replacement?.rag_metadata}
-            />
-          )}
-          <div className="field">
-            <label htmlFor="knowledge-pdf">Synthetic PDF</label>
-            <input
-              id="knowledge-pdf"
-              type="file"
-              accept=".pdf,application/pdf"
-              disabled={save.busy}
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            />
-            <small>
-              Up to 6 MiB and 100 pages. Use a PDF with selectable text.
-            </small>
-          </div>
-          <button disabled={!file || save.busy || save.blocked}>
-            Upload PDF
-          </button>
-        </form>
+                  setPage(1)
+                  sources.reload()
+                },
+              )
+            }}
+          >
+            {replacement && (
+              <p role="status">
+                Replacing <strong>{replacement.title}</strong>. The current PDF
+                stays published until the replacement is reviewed and published.{' '}
+                <button
+                  type="button"
+                  disabled={save.busy}
+                  onClick={() => {
+                    setReplacement(null)
+                    setTitle('')
+                    setMetadataEnabled(false)
+                  }}
+                >
+                  Cancel replacement
+                </button>
+              </p>
+            )}
+            <div className="field">
+              <label htmlFor="knowledge-title">Source title</label>
+              <input
+                id="knowledge-title"
+                value={title}
+                maxLength={120}
+                required={screened}
+                disabled={save.busy}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </div>
+            {!screened && (
+              <label className="field">
+                <input
+                  type="checkbox"
+                  checked={metadataEnabled}
+                  disabled={save.busy}
+                  onChange={(event) => setMetadataEnabled(event.target.checked)}
+                />
+                Include in the reviewed PDF library
+              </label>
+            )}
+            {(screened || metadataEnabled) && (
+              <PdfMetadataFields
+                key={replacement?.id}
+                previous={replacement?.rag_metadata}
+                screened={screened}
+              />
+            )}
+            <div className="field">
+              <label htmlFor="knowledge-pdf">
+                {screened ? 'Source PDF' : 'Synthetic PDF'}
+              </label>
+              <input
+                id="knowledge-pdf"
+                type="file"
+                accept=".pdf,application/pdf"
+                disabled={save.busy}
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+              <small>
+                Up to 6 MiB and 100 pages. Use a PDF with selectable text.
+              </small>
+            </div>
+            <button disabled={!file || save.busy || save.blocked}>
+              Upload PDF
+            </button>
+          </form>
+        )}
         {!selected && save.error && <Notice message={save.error} />}
         {sources.loading && <p role="status">Loading source versions…</p>}
         {sources.error !== undefined && (
           <Notice message="Source versions could not be loaded." />
         )}
         {sources.data?.items.length === 0 && (
-          <p>Add a synthetic guide to start.</p>
+          <p>
+            {screened
+              ? 'Upload a source PDF to start.'
+              : 'Add a synthetic guide to start.'}
+          </p>
         )}
         {sources.data?.items.map((source) => {
+          const screenedVersion = !source.content && source.screening_required
+          const canReview =
+            !screened || Boolean(source.content) || screenedVersion
           const next =
-            source.processing === 'ready' ? actions[source.status] : null
+            source.processing === 'ready' &&
+            (canReview || source.status === 'published')
+              ? actions[source.status]
+              : null
           return (
             <article className="panel knowledge-source-version" key={source.id}>
               <h2>{source.title}</h2>
@@ -345,14 +406,16 @@ export default function KnowledgeSourcesPage() {
                 <p>{source.content}</p>
               ) : source.processing === 'queued' ? (
                 <p>
-                  Waiting for text extraction. Refresh sources to check
-                  progress.
+                  {screenedVersion
+                    ? 'Waiting for screening and text extraction.'
+                    : 'Waiting for text extraction.'}{' '}
+                  Refresh sources to check progress.
                 </p>
               ) : source.processing === 'failed' ? (
                 <Notice
                   message={
                     pdfErrors[source.processing_error ?? ''] ??
-                    'Text extraction failed. Try a new synthetic PDF.'
+                    'Text extraction failed. Try a new PDF.'
                   }
                 />
               ) : (
@@ -403,6 +466,26 @@ export default function KnowledgeSourcesPage() {
                     <dd>{source.rag_metadata.published_on ?? 'Unknown'}</dd>
                     <dt>Valid until</dt>
                     <dd>{source.rag_metadata.valid_until ?? 'Unspecified'}</dd>
+                    {source.rag_metadata.reuse_basis && (
+                      <>
+                        <dt>Reuse basis</dt>
+                        <dd>{source.rag_metadata.reuse_basis}</dd>
+                      </>
+                    )}
+                    {source.rag_metadata.source_url && (
+                      <>
+                        <dt>Original source</dt>
+                        <dd>
+                          <a
+                            href={source.rag_metadata.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open publisher source
+                          </a>
+                        </dd>
+                      </>
+                    )}
                     <dt>Library access</dt>
                     <dd>
                       {source.rag_metadata.access === 'farmers'
@@ -415,6 +498,37 @@ export default function KnowledgeSourcesPage() {
                   SHA-256: {source.checksum}
                 </p>
               </details>
+              {!source.content &&
+                source.processing === 'ready' &&
+                source.status === 'draft' &&
+                canReview && (
+                  <details
+                    open={reviewId === source.id}
+                    onToggle={(event) => {
+                      const open = event.currentTarget.open
+                      setReviewId((current) =>
+                        open
+                          ? source.id
+                          : current === source.id
+                            ? null
+                            : current,
+                      )
+                    }}
+                  >
+                    <summary>Advisor review</summary>
+                    {screenedVersion && (
+                      <p>
+                        Assign an advisor before marking this version as
+                        reviewed.
+                      </p>
+                    )}
+                    {reviewId === source.id && (
+                      <SourceReviewAssignment
+                        path={`${path}/${source.id}/advisor-review`}
+                      />
+                    )}
+                  </details>
+                )}
               {next && (
                 <button
                   className="primary"
@@ -440,23 +554,27 @@ export default function KnowledgeSourcesPage() {
                     )
                   }
                 >
-                  Retry PDF extraction
+                  {screenedVersion
+                    ? 'Retry PDF screening and extraction'
+                    : 'Retry PDF extraction'}
                 </button>
               )}
-              {!source.content && source.status === 'published' && (
-                <button
-                  type="button"
-                  disabled={save.busy || save.blocked}
-                  onClick={() => {
-                    setReplacement(source)
-                    setTitle(source.title)
-                    setMetadataEnabled(Boolean(source.rag_metadata))
-                    document.getElementById('knowledge-title')?.focus()
-                  }}
-                >
-                  Upload replacement PDF
-                </button>
-              )}
+              {uploadAvailable &&
+                !source.content &&
+                source.status === 'published' && (
+                  <button
+                    type="button"
+                    disabled={save.busy || save.blocked}
+                    onClick={() => {
+                      setReplacement(source)
+                      setTitle(source.title)
+                      setMetadataEnabled(Boolean(source.rag_metadata))
+                      document.getElementById('knowledge-title')?.focus()
+                    }}
+                  >
+                    Upload replacement PDF
+                  </button>
+                )}
               {!source.content &&
                 ['draft', 'reviewed'].includes(source.status) && (
                   <button

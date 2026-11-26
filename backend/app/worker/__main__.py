@@ -54,11 +54,10 @@ def main() -> int:
                         reminders.process_batch(database.engine)
                     except SQLAlchemyError:
                         logger.warning("Task reminders could not be saved. The worker will retry.")
-                if settings.app_env != "production":
-                    try:
-                        process_one(database.engine)
-                    except SQLAlchemyError, OSError, ValueError:
-                        logger.warning("PDF job could not be completed. The worker will retry.")
+                try:
+                    process_one(database.engine, settings)
+                except SQLAlchemyError, OSError, ValueError:
+                    logger.warning("PDF job could not be completed. The worker will retry.")
                 if monotonic() >= next_embedding_check:
                     next_embedding_check = monotonic() + 10
                     try:

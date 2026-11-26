@@ -35,7 +35,7 @@ export default function ResearchPassage({
         aria-controls={panelId}
         onClick={() => setOpen(!open)}
       >
-        {open ? 'Hide supporting passage' : 'Show supporting passage'}
+        {open ? 'Hide source' : 'View source'}
       </button>
       <div id={panelId} hidden={!open}>
         {record.loading && <p role="status">Loading supporting passage…</p>}

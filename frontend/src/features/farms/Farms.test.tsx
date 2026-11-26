@@ -175,145 +175,96 @@ it('keeps task editing available when the demo forecast cannot load', async () =
   ).not.toBeInTheDocument()
 })
 
-it('guides a farmer with no active farms without inventing setup progress', async () => {
-  handle = () => page([])
-  wrap(<FarmActionBar />)
-  expect(await screen.findByText('Add your first farm')).toBeVisible()
-  expect(screen.getByRole('link', { name: /Add my farm/ })).toHaveAttribute(
-    'href',
-    '/farms/new',
-  )
-  expect(
-    screen.getByRole('link', { name: 'View archived farms' }),
-  ).toHaveAttribute('href', '/farms?status=archived')
-  expect(
-    screen.queryByText('Farm added ✓', { exact: false }),
-  ).not.toBeInTheDocument()
+it('shows a task validation error and sends only one write for repeated submits', async () => {
+  let rejectSave: (reason: ApiError) => void = () => {}
+  const pendingSave = new Promise((_, reject) => {
+    rejectSave = reject
+  })
+  handle = (path, init) =>
+    init?.method === 'POST' && path.endsWith('/tasks')
+      ? pendingSave
+      : reads(path)
+  cultPage()
+  const add = await screen.findByRole('button', { name: 'Add task' })
+  await waitFor(() => expect(add).toBeEnabled())
+  fireEvent.click(add)
+  const title = screen.getByLabelText('Task title')
+  fireEvent.change(title, { target: { value: 'Check plot markers' } })
+  fireEvent.change(screen.getByLabelText('Due date'), {
+    target: { value: '2099-01-16' },
+  })
+  const form = title.closest('form')!
+  fireEvent.submit(form)
+  fireEvent.submit(form)
+  const writes = vi
+    .mocked(request)
+    .mock.calls.filter(
+      ([path, init]) => path.endsWith('/tasks') && init?.method === 'POST',
+    )
+  expect(writes).toHaveLength(1)
+  rejectSave(new ApiError(422, 'Check the form fields.'))
+  expect(await screen.findByText('Check the form fields.')).toBeVisible()
+  expect(title).toHaveValue('Check plot markers')
+  expect(screen.getByRole('button', { name: 'Save task' })).toBeEnabled()
 })
 
-it('offers retry rather than claiming an empty hero farm list when farms fail to load', async () => {
+function chooseCrop() {
+  return wrap(
+    <Routes>
+      <Route path="/" element={<FarmActionBar action="note" />} />
+      <Route
+        path="/farms/:farmId/cultivations/:cultivationId"
+        element={<CultivationPage />}
+      />
+    </Routes>,
+  )
+}
+it('offers farm setup when there are no active farms', async () => {
+  handle = () => page([])
+  chooseCrop()
+  expect(
+    await screen.findByRole('link', { name: 'Add your first farm' }),
+  ).toHaveAttribute('href', '/farms/new')
+})
+it('retries a failed farm read before offering setup', async () => {
   handle = () => {
     throw new ApiError(503, 'Unavailable')
   }
-  wrap(<FarmActionBar />)
+  chooseCrop()
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'could not be loaded',
   )
-  expect(
-    screen.queryByRole('link', { name: /Add my farm/ }),
-  ).not.toBeInTheDocument()
   handle = () => page([])
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-  expect(await screen.findByRole('link', { name: /Add my farm/ })).toBeVisible()
-})
-
-it('uses the selected active farm to guide crop setup, including planned crops', async () => {
-  handle = (path) => (path.includes('/cultivations') ? page([]) : reads(path))
-  wrap(<FarmActionBar />)
   expect(
-    await screen.findByRole('link', { name: /Add what you are growing/ }),
-  ).toHaveAttribute('href', '/farms/farm-one/cultivations/new')
-  expect(
-    vi
-      .mocked(request)
-      .mock.calls.some(([path]) => path.includes('/observations')),
-  ).toBe(false)
-})
-
-it('offers the first observation only after checking saved crop notes', async () => {
-  handle = (path) => (path.includes('/observations') ? page([]) : reads(path))
-  wrap(<FarmActionBar />)
-  expect(
-    await screen.findByRole('link', { name: /Record first observation/ }),
-  ).toHaveAttribute('href', '/farms/farm-one/cultivations/cult-one?observe=1')
-  expect(screen.getByText('Start your field notes')).toBeVisible()
-})
-
-it('opens completed setup records and reports nested failures without false progress', async () => {
-  wrap(<FarmActionBar />)
-  expect(
-    await screen.findByRole('link', { name: /Open crop records/ }),
-  ).toHaveAttribute('href', '/farms/farm-one/cultivations/cult-one')
-  expect(screen.getByText('Pick up where you left off')).toBeVisible()
-})
-
-it('blocks setup conclusions when observation reads fail', async () => {
-  handle = (path) => {
-    if (path.includes('/observations')) throw new ApiError(503, 'Unavailable')
-    return reads(path)
-  }
-  wrap(<FarmActionBar />)
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Next step unavailable',
-  )
-  expect(
-    screen.queryByRole('link', { name: /Record first observation/ }),
-  ).not.toBeInTheDocument()
-  expect(
-    screen.queryByText('3. Observation recorded ✓'),
-  ).not.toBeInTheDocument()
-})
-
-it('changes the hero next action to match the chosen farm', async () => {
-  handle = (path) => {
-    if (path.split('?')[0] === '/farms')
-      return page([
-        farm,
-        { ...farm, id: 'farm-two', name: 'Another synthetic farm' },
-      ])
-    if (path.startsWith('/farms/farm-two/cultivations')) return page([])
-    return reads(path)
-  }
-  wrap(<FarmActionBar />)
-  expect(
-    await screen.findByRole('link', { name: /Open crop records/ }),
+    await screen.findByRole('link', { name: 'Add your first farm' }),
   ).toBeVisible()
-  fireEvent.change(screen.getByLabelText('Choose your farm'), {
-    target: { value: 'farm-two' },
-  })
-  expect(
-    await screen.findByRole('link', { name: /Add what you are growing/ }),
-  ).toHaveAttribute('href', '/farms/farm-two/cultivations/new')
-  expect(
-    screen.queryByRole('link', { name: /Open crop records/ }),
-  ).not.toBeInTheDocument()
 })
-
-it('ignores a late private hero response when the signed-in farmer changes', async () => {
-  let finishOld!: (value: Page<Farm>) => void
-  let calls = 0
-  handle = (path) => {
-    if (path.startsWith('/farms?')) {
-      calls++
-      if (calls === 1)
-        return new Promise<Page<Farm>>((resolve) => {
-          finishOld = resolve
-        })
-      return page([])
-    }
-    return reads(path)
-  }
-  render(
-    <MemoryRouter initialEntries={['/']}>
-      <App />
-    </MemoryRouter>,
-  )
-  await waitFor(() => expect(calls).toBe(1))
-  act(() =>
-    window.dispatchEvent(
-      new CustomEvent('account-session', {
-        detail: { ...user, id: 'new-owner' },
-      }),
-    ),
-  )
-  expect(await screen.findByRole('link', { name: /Add my farm/ })).toBeVisible()
-  await act(async () => finishOld(page([farm])))
-  expect(
-    screen.queryByRole('combobox', { name: 'Choose your farm' }),
-  ).not.toBeInTheDocument()
-  expect(screen.queryByText(farm.name)).not.toBeInTheDocument()
+it('opens the next field note even when the crop already has notes', async () => {
+  chooseCrop()
+  expect(await screen.findByLabelText('What did you see?')).toHaveFocus()
+  expect(screen.getByLabelText('Observed at (device time)')).not.toHaveValue('')
+  expect(screen.queryByRole('heading', { name: 'Farm tasks' })).toBeNull()
 })
-
+it('asks which farm and crop to use when there are several', async () => {
+  handle = (path) =>
+    path.split('?')[0] === '/farms'
+      ? page([farm, { ...farm, id: 'two', name: 'Second farm' }])
+      : path.startsWith('/farms/two/cultivations')
+        ? page([
+            cultivation,
+            { ...cultivation, id: 'second', planting_date: '2026-01-02' },
+          ])
+        : reads(path)
+  chooseCrop()
+  fireEvent.click(await screen.findByRole('button', { name: /Second farm/ }))
+  expect(
+    await screen.findByRole('link', { name: /2026-01-02/ }),
+  ).toHaveAttribute(
+    'href',
+    '/farms/two/cultivations/second?view=notes&observe=1',
+  )
+})
 it('creates a district/village description without guessing coordinates or requesting device location', async () => {
   const geolocation = { getCurrentPosition: vi.fn() }
   vi.stubGlobal('navigator', { geolocation })
@@ -619,7 +570,7 @@ it('keeps archived cultivation details and history readable without write contro
     screen.queryByRole('button', { name: 'Confirm stage' }),
   ).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('button', { name: 'Add observation' }),
+    screen.queryByRole('button', { name: 'Add a field note' }),
   ).not.toBeInTheDocument()
   expect(
     screen.getByRole('link', { name: 'Cultivation history' }),
@@ -648,7 +599,7 @@ it('keeps observation drafts separate from parent edits and preserves timestamp 
   }
   cultPage()
   fireEvent.click(
-    await screen.findByRole('button', { name: /Edit observation from/ }),
+    await screen.findByRole('button', { name: /Edit field note from/ }),
   )
   expect(
     screen.getByRole('button', { name: 'Archive cultivation' }),
@@ -657,11 +608,11 @@ it('keeps observation drafts separate from parent edits and preserves timestamp 
     screen.getByRole('button', { name: 'Edit cultivation' }),
   ).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Confirm stage' })).toBeDisabled()
-  fireEvent.change(screen.getByLabelText('Observation notes'), {
+  fireEvent.change(screen.getByLabelText('What did you see?'), {
     target: { value: 'Corrected synthetic note' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Save observation' }))
-  expect(await screen.findByText('Observation saved.')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
+  expect(await screen.findByText('Note saved.')).toBeInTheDocument()
   const mutation = vi
     .mocked(request)
     .mock.calls.find(([, init]) => init?.method === 'PATCH')!
@@ -733,17 +684,15 @@ it.each(['/farms', '/dashboard'])(
 
 it('opens the observation entry from onboarding and consumes the one-time intent', async () => {
   cultPage('?observe=1')
-  expect(await screen.findByLabelText('Observation notes')).toBeVisible()
+  expect(await screen.findByLabelText('What did you see?')).toBeVisible()
   expect(
     screen.getByRole('button', { name: 'Archive cultivation' }),
   ).toBeDisabled()
   expect(
     screen.getByRole('button', { name: 'Edit cultivation' }),
   ).toBeDisabled()
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Cancel observation editing' }),
-  )
-  expect(screen.queryByLabelText('Observation notes')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel editing note' }))
+  expect(screen.queryByLabelText('What did you see?')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Edit cultivation' })).toBeEnabled()
 })
 
@@ -760,7 +709,7 @@ it('does not open an onboarding write form for an archived crop', async () => {
   expect(
     await screen.findByText('Archived record.', { exact: false }),
   ).toBeVisible()
-  expect(screen.queryByLabelText('Observation notes')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('What did you see?')).not.toBeInTheDocument()
 })
 
 it('ignores a late private response after the account changes', async () => {

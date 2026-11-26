@@ -39,7 +39,7 @@ Use 401 for invalid/revoked sessions, 403 for excluded roles, 404 for missing/no
 
 ## Interface
 
-Admin login and visits to login with an active admin session now open `/admin/overview`. Farmers still return to `/`, and advisors to `/account`. Admin Overview is reachable from the account navigation and the signed-in administrator website header. It shows four highlights (farmers, farms, cultivations, pending support), account-state/role counts, detailed record splits, support statuses and the snapshot time. Links go to the existing farmer/user management and support inbox; count cards do not open private farms.
+Admin login and visits to login with an active admin session now open `/admin/overview`. Farmers still return to `/`, and advisors to `/advisor`. Admin Overview is reachable from the account navigation and the signed-in administrator website header. It shows four highlights (farmers, farms, cultivations, pending support), account-state/role counts, detailed record splits, support statuses and the snapshot time. Links go to the existing farmer/user management and support inbox; count cards do not open private farms.
 
 Farmer account detail shows Farm record summary with farm/cultivation totals/splits and an explicit privacy note. It reloads when the target/version changes. Shared request-state handling ignores late responses after route/principal changes, clears unavailable/stale totals during refresh, and displays real zero only after a successful count response. Loading, retry, denial and session expiry are explicit. The cream/sage/forest theme and responsive layout remain; no fabricated charts or metrics are added.
 

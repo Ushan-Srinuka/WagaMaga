@@ -9,8 +9,14 @@ import {
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Notice from '../../components/Notice'
 import Field from '../../components/Field'
-import type { Cultivation, Farm, FarmDeleted, Page } from '../../lib/farms'
-import { area, farmWrite } from '../../lib/farms'
+import type {
+  Crop,
+  Cultivation,
+  Farm,
+  FarmDeleted,
+  Page,
+} from '../../lib/farms'
+import { area, cropName, farmWrite } from '../../lib/farms'
 import {
   Archived,
   CultivationForm,
@@ -70,24 +76,15 @@ function FarmsList({
   }
   return (
     <div className="farm-records">
-      <Intro eyebrow="Your workspace / Farm records" title="My Farms">
-        A place for your fields, cultivations and everyday observations.
-      </Intro>
-      <section className="record-welcome">
-        <div>
-          <span className="eyebrow">Your growing ground</span>
-          <h2>Keep the details that matter.</h2>
-          <p>
-            Start with a farm. Add what you know, and leave the rest unknown.
-          </p>
-        </div>
-        <Link className="primary record-link" to="/farms/new">
-          Add farm <span aria-hidden="true">＋</span>
-        </Link>
-      </section>
+      <h1>My Farms</h1>
+      <Link className="primary record-link" to="/farms/new">
+        {records.data?.total === 0 && !search && status === 'active'
+          ? 'Add your first farm'
+          : 'Add farm'}
+      </Link>
       <section className="panel" aria-labelledby="farms-heading">
         <div className="title-row">
-          <h2 id="farms-heading">Your farm records</h2>
+          <h2 id="farms-heading">Farm list</h2>
           <span className="count-label">
             {records.data?.total ?? '—'}{' '}
             {records.data?.total === 1 ? 'farm' : 'farms'}
@@ -186,9 +183,8 @@ export function NewFarmPage() {
       <Link className="back-link" to="/farms">
         ← My Farms
       </Link>
-      <Intro eyebrow="Farm records / New farm" title="A new beginning">
-        Step 1: give your farm a name and location. Add what you are growing
-        next.
+      <Intro eyebrow="Farm records / New farm" title="Add a farm">
+        Step 1: give your farm a name and location. Add a crop next.
       </Intro>
       <section className="panel record-editor">
         <h2>Farm details</h2>
@@ -250,93 +246,96 @@ function FarmDetail({ id }: { id: string }) {
           retains historical records and cannot be undone here.
         </p>
       )}
-      <div className="record-toolbar">
-        <span
-          className={`status-pill ${farm.effective_archived ? 'disabled' : ''}`}
-        >
-          {farm.effective_archived ? 'Archived' : 'Active farm'}
-        </span>
-        <Link to={`/farms/${id}/history`}>Farm history</Link>
-        {farm.effective_archived && (
-          <>
-            <button
-              disabled={save.busy || save.blocked}
-              onClick={() => setAction('restore')}
-            >
-              Restore farm
-            </button>
-            <button
-              className="danger-action"
-              disabled={save.busy || save.blocked}
-              onClick={() => {
-                setConfirmation('')
-                setAction('delete')
-              }}
-            >
-              Delete farm
-            </button>
-          </>
-        )}
-        {!farm.effective_archived && (
-          <>
-            <button
-              onClick={() => setEditing(!editing)}
-              disabled={save.busy || editorBusy}
-            >
-              {editing ? 'Cancel editing' : 'Edit farm'}
-            </button>
-            <button
-              className="danger-action"
-              disabled={save.busy || save.blocked || editing}
-              onClick={() => setArchive(true)}
-            >
-              Archive farm
-            </button>
-          </>
-        )}
-      </div>
-      {!archive && !action && <SaveError {...save} review={reload} />}
-      {editing && !farm.effective_archived ? (
-        <section className="panel record-editor">
-          <h2>Edit farm details</h2>
-          <FarmForm
-            record={farm}
-            onBusy={setEditorBusy}
-            saved={(next) => {
-              resource.replace(next)
-              setEditing(false)
-              setNotice('Farm details saved.')
-            }}
-            review={reload}
-          />
-        </section>
-      ) : (
-        <section className="panel record-summary" aria-label="Farm details">
-          <dl>
-            <div>
-              <dt>Location</dt>
-              <dd>{farm.location}</dd>
-            </div>
-            <div>
-              <dt>Farm area</dt>
-              <dd>{area(farm.area_value, farm.area_unit)}</dd>
-            </div>
-            <div>
-              <dt>Timezone</dt>
-              <dd>{farm.timezone}</dd>
-            </div>
-            <div>
-              <dt>Coordinates</dt>
-              <dd>
-                {farm.latitude !== null
-                  ? `${farm.latitude}, ${farm.longitude}`
-                  : 'Not recorded'}
-              </dd>
-            </div>
-          </dl>
-        </section>
-      )}
       <Cultivations key={`${farm.id}:${farm.version}`} farm={farm} />
+      <details className="panel">
+        <summary>Farm details</summary>
+        <div className="record-toolbar">
+          <span
+            className={`status-pill ${farm.effective_archived ? 'disabled' : ''}`}
+          >
+            {farm.effective_archived ? 'Archived' : 'Active farm'}
+          </span>
+          <Link to={`/farms/${id}/history`}>Farm history</Link>
+          {farm.effective_archived && (
+            <>
+              <button
+                disabled={save.busy || save.blocked}
+                onClick={() => setAction('restore')}
+              >
+                Restore farm
+              </button>
+              <button
+                className="danger-action"
+                disabled={save.busy || save.blocked}
+                onClick={() => {
+                  setConfirmation('')
+                  setAction('delete')
+                }}
+              >
+                Delete farm
+              </button>
+            </>
+          )}
+          {!farm.effective_archived && (
+            <>
+              <button
+                onClick={() => setEditing(!editing)}
+                disabled={save.busy || editorBusy}
+              >
+                {editing ? 'Cancel editing' : 'Edit farm'}
+              </button>
+              <button
+                className="danger-action"
+                disabled={save.busy || save.blocked || editing}
+                onClick={() => setArchive(true)}
+              >
+                Archive farm
+              </button>
+            </>
+          )}
+        </div>
+        {!archive && !action && <SaveError {...save} review={reload} />}
+        {editing && !farm.effective_archived ? (
+          <section className="panel record-editor">
+            <h2>Edit farm details</h2>
+            <FarmForm
+              record={farm}
+              onBusy={setEditorBusy}
+              saved={(next) => {
+                resource.replace(next)
+                setEditing(false)
+                setNotice('Farm details saved.')
+              }}
+              review={reload}
+            />
+          </section>
+        ) : (
+          <section className="panel record-summary" aria-label="Farm details">
+            <dl>
+              <div>
+                <dt>Location</dt>
+                <dd>{farm.location}</dd>
+              </div>
+              <div>
+                <dt>Farm area</dt>
+                <dd>{area(farm.area_value, farm.area_unit)}</dd>
+              </div>
+              <div>
+                <dt>Timezone</dt>
+                <dd>{farm.timezone}</dd>
+              </div>
+              <div>
+                <dt>Coordinates</dt>
+                <dd>
+                  {farm.latitude !== null
+                    ? `${farm.latitude}, ${farm.longitude}`
+                    : 'Not recorded'}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        )}
+      </details>
       {archive && (
         <ConfirmDialog
           title="Archive this farm?"
@@ -436,6 +435,7 @@ function Cultivations({ farm }: { farm: Farm }) {
   const [status, setStatus] = useState(
     farm.effective_archived ? 'archived' : 'active',
   )
+  const cropTypes = useRecord<Page<Crop>>('/crop-types?page_size=100')
   const [page, setPage] = useState(1)
   const records = useRecord<Page<Cultivation>>(
     `/farms/${farm.id}/cultivations?status=${status}&page=${page}`,
@@ -444,18 +444,14 @@ function Cultivations({ farm }: { farm: Farm }) {
     <section className="panel" aria-labelledby="cultivations-heading">
       <div className="title-row">
         <div>
-          <p className="eyebrow">Growing here</p>
           <h2 id="cultivations-heading">What you are growing</h2>
-          <p className="muted">
-            Each crop and planting date makes one cultivation record.
-          </p>
         </div>
         {!farm.effective_archived && (
           <Link
             className="primary record-link"
             to={`/farms/${farm.id}/cultivations/new`}
           >
-            Add what you are growing
+            Add a crop
           </Link>
         )}
       </div>
@@ -486,7 +482,7 @@ function Cultivations({ farm }: { farm: Farm }) {
               <h3>No crop records to show.</h3>
               <p>
                 {status === 'active' && !farm.effective_archived
-                  ? 'Next step: use “Add what you are growing” to record your crop, planting date and planted area.'
+                  ? 'Next step: use “Add a crop” to record your crop, planting date and planted area.'
                   : 'Choose another status filter to find earlier records.'}
               </p>
             </div>
@@ -506,7 +502,11 @@ function Cultivations({ farm }: { farm: Farm }) {
                     </span>
                     <h3>
                       <Link to={`/farms/${farm.id}/cultivations/${record.id}`}>
-                        Cultivation · {record.planting_date}
+                        {cropName(
+                          record.crop_type_id,
+                          cropTypes.data?.items ?? [],
+                        )}{' '}
+                        · {record.planting_date}
                       </Link>
                     </h3>
                     <p>

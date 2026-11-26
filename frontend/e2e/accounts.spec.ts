@@ -24,7 +24,7 @@ async function login(page: Page, address: string, secret = password) {
       ? '/'
       : user.role === 'administrator'
         ? '/admin/overview'
-        : '/account',
+        : '/advisor',
   )
   await page.goto('/account')
   await expect(page.getByRole('heading', { name: 'My account.' })).toBeVisible()
@@ -192,19 +192,13 @@ test('farmer registers, signs in, edits profile, reloads and signs out', async (
   ).toBeVisible()
   await openMenu(page)
   await page.getByRole('button', { name: /Sign out/ }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   await page.goto('/account')
-  await expect(
-    page.getByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   await login(page, address, changedPassword)
   await openMenu(page)
   await page.getByRole('button', { name: /Sign out/ }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Make yourself at home.' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -275,7 +269,7 @@ test('administrator searches accounts and confirms role/status changes', async (
   await expect(page.getByRole('status')).toContainText('Account updated')
   await farmerPage.reload()
   await expect(
-    farmerPage.getByRole('heading', { name: 'Make yourself at home.' }),
+    farmerPage.getByRole('heading', { name: 'Log in' }),
   ).toBeVisible()
   await page
     .getByLabel('Reason for change')
@@ -330,7 +324,7 @@ test('administrator searches accounts and confirms role/status changes', async (
   ).toBeVisible()
   await farmerPage.reload()
   await expect(
-    farmerPage.getByRole('heading', { name: 'Make yourself at home.' }),
+    farmerPage.getByRole('heading', { name: 'Log in' }),
   ).toBeVisible()
   await farmerPage.getByLabel('Email address').fill(address)
   await farmerPage.getByLabel('Password', { exact: true }).fill(password)

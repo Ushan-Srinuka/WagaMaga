@@ -65,6 +65,8 @@ test('public Help leads to private farmer requests, admin replies and resolution
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
+  const homeMenu = page.getByRole('button', { name: 'Menu', exact: true })
+  if (await homeMenu.isVisible()) await homeMenu.click()
   await page
     .getByRole('banner')
     .getByRole('link', { name: 'Help', exact: true })
@@ -95,7 +97,7 @@ test('public Help leads to private farmer requests, admin replies and resolution
   ).toHaveAttribute('href', '/help#sign-in')
   await login(page, farmer.email)
   await page.goto('/help')
-  await page.getByRole('link', { name: /Contact support/ }).click()
+  await page.getByRole('link', { name: /Contact website support/ }).click()
   const subject = `Synthetic support ${randomBytes(4).toString('hex')}`
   await page
     .getByLabel('What do you need help with?')

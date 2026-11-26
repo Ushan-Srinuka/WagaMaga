@@ -18,6 +18,7 @@ from app.modules.identity.routes import router as identity_router
 from app.modules.identity.security import COOKIE_NAME, COOKIE_PATH, IdentityError
 from app.modules.knowledge.pdf_text import MAX_BYTES as PDF_MAX_BYTES
 from app.modules.knowledge.routes import PDF_UPLOAD_PATH
+from app.modules.knowledge.routes import advisor_router as knowledge_advisor_router
 from app.modules.knowledge.routes import evaluation_router as knowledge_evaluation_router
 from app.modules.knowledge.routes import farmer_router as knowledge_farmer_router
 from app.modules.knowledge.routes import router as knowledge_router
@@ -40,7 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         description=(
             "Accounts, audit, notifications, owner-only Farm Records, website support and health. "
-            "Advisory and planning features are not implemented."
+            "Weekly planning, assigned advisor review, weather and cited chilli knowledge."
         ),
         docs_url="/docs" if settings.app_env != "production" else None,
         redoc_url="/redoc" if settings.app_env != "production" else None,
@@ -132,6 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(knowledge_router)
     application.include_router(knowledge_evaluation_router)
     application.include_router(knowledge_farmer_router)
+    application.include_router(knowledge_advisor_router)
 
     @application.get("/health/live", tags=["Health"])
     def liveness() -> dict[str, str]:

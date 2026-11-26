@@ -6,6 +6,8 @@ System design
 
 WagaMaga AI uses a modular FastAPI application with a separate worker, one responsive React client and PostgreSQL with pgvector. This design implements the companion SRS while keeping evidence retrieval, human decisions and task execution under distinct controls.
 
+The React cultivation view groups observations, task creation and the seven-day planner near the top. The planner question surface reads structured task and forecast records, and cultivation PDF chat retrieves eligible source passages through the knowledge module. Advisor sign-in opens the assigned review queue, where the API enforces the case and role boundaries on each request. The real-farmer chilli advisory pilot remains gated pending evidence evaluation and independent review.
+
 Document version 0.1 | 14 November 2026 | Proposed implementation design. Initial domain: English chilli cultivation support in one validated area. Technology choices are design decisions; provider selection and agricultural validation remain open.
 
 ```mermaid

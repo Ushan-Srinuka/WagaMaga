@@ -1,5 +1,92 @@
 # Testing strategy
 
+## Homepage navigation and feature sections
+
+The production build, lint, formatting and 78 frontend tests passed. Ten targeted Edge browser checks passed across 360 px and 1280 px with synthetic accounts and the dedicated PostgreSQL browser database. They cover the homepage anchors, mobile Menu and Escape focus, all four farmer shortcuts, Chilli AI sources and Help. Full-page browser screenshots were inspected at both widths.
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18241'
+$env:E2E_WEB_PORT='15241'
+$env:E2E_BUILT_FRONTEND='1'
+$env:E2E_LIVE_GEMINI='0'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts knowledge.spec.ts support.spec.ts --grep 'visitor can open login|keeps farm, cultivation|home opens crop chat|reads a published chilli study|public Help leads' --output=test-results/home-features
+```
+
+## Farmer home, crop chat, field notes and planner
+
+Use synthetic accounts and the dedicated PostgreSQL browser database described below. The home journey opens crop chat, returns Home, saves two notes to the same crop, then marks a task done from today's list. The farm records journey checks that all four actions fit without scrolling at the configured mobile and desktop viewport sizes. The component suite also covers selecting among farms and crops, failed reads and role-specific login destinations.
+
+```powershell
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+npm.cmd --prefix frontend run typecheck
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18227'
+$env:E2E_WEB_PORT='15227'
+$env:E2E_BUILT_FRONTEND='1'
+$env:E2E_LIVE_GEMINI='0'
+npm.cmd --prefix frontend run test:e2e
+```
+
+
+Local results: 78 frontend tests passed. Type checking, lint, formatting and the production build passed. The broad desktop/mobile run passed 62 browser cases, skipped both opt-in live Gemini cases and identified two failures. The daily guidance test used the old source-button label. The optional note time control could widen the page on mobile. After correcting both, the daily workflow, farm record lifecycle and Home shortcuts passed on desktop and mobile (6/6) against PostgreSQL. A separate 360 px browser measurement with the time field expanded reported a 360 px page width. Human usability testing and remote CI are pending.
+
+```powershell
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'keeps farm, cultivation|home opens crop chat|completes the daily workflow'
+```
+
+## Weekly planner, question labels and advisor sign-in · 26 November 2026
+
+Use the built frontend and disposable Edge browser settings from the homepage check. Run database tests after browser tests when both use the same test database.
+
+```powershell
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts knowledge.spec.ts accounts.spec.ts --grep 'manages manual tasks|reviews a missed task|revises an advisor suggestion|completes the daily workflow|reads a published chilli study|sees the pending chilli pilot|administrator searches'
+$cache = Join-Path (Get-Location) '.tools/pytest-planner-ux'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/integration/test_farm_api.py -k 'weekly or all_routes_require_live_farmer_role' -q
+```
+
+All 81 frontend tests and nine targeted PostgreSQL tests passed. Twelve Edge journeys passed at 360 px and 1280 px. Two administrator journeys initially expected the old advisor destination and passed on rerun after updating the assertion, for 14 passing scenarios across the two runs. Coverage includes overdue task navigation and readable dates, rain warnings, task changes, both question surfaces, cited answers, and advisor sign-in to an empty queue followed by an assigned review. The production build, TypeScript, lint and formatting passed. The browser fixture kept the farmer advisory pilot disabled and live Gemini calls off.
+
+## Cultivation quick actions · 26 November 2026
+
+Use the Edge and disposable-database settings from the homepage check with the built frontend.
+
+```powershell
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'manages manual tasks|completes the daily workflow|keeps farm, cultivation'
+```
+
+All 81 frontend tests and six targeted Edge journeys passed. The daily workflow checked action visibility and page width at 360 px, 768 px and 1280 px. The desktop and mobile journeys also covered observation focus and saving, task changes, onboarding, weather, PDF search and chilli questions. The build, TypeScript, lint and formatting checks for the affected files passed.
+
+## Add task interaction · 26 November 2026
+
+Use the Edge and disposable-database settings from the homepage check below with the built frontend.
+
+```powershell
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'manages manual tasks|reviews a missed task|sets a weather alert|completes the daily workflow'
+```
+
+All 81 frontend tests and eight targeted Edge journeys passed at 360 px and 1280 px. The checks cover keyboard opening and focus, form placement, discarding, validation feedback, duplicate-submit suppression, task history, missed-task review, and weather rescheduling. TypeScript, lint, formatting and the production build passed. The Windows test servers required manual cleanup after the browser journeys.
+
+## Homepage chilli questions · 26 November 2026
+
+```powershell
+npm.cmd --prefix frontend run test -- --maxWorkers=2
+npm.cmd --prefix frontend run lint
+npm.cmd --prefix frontend run format:check
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+$env:E2E_BUILT_FRONTEND='1'
+$env:E2E_LIVE_GEMINI='0'
+npm.cmd --prefix frontend run test:e2e -- farms.spec.ts knowledge.spec.ts --grep 'visitor can open login|keeps farm, cultivation|reads a published chilli study|sees the pending chilli pilot'
+```
+
+All 80 frontend tests passed. Lint, formatting and the production build passed. All eight targeted Edge journeys passed across 360 px and 1280 px with synthetic accounts and the disposable PostgreSQL database. They verify account entry without private reads, farm and observation onboarding, keyboard navigation from the homepage to a cited answer, and the disabled farm guidance pilot. The Windows test servers required manual cleanup after the browser checks.
+
 ## V1 release verification · 25 November 2026
 
 The selected installation is the Windows development computer. Local checks used Python 3.14.10, Node 24.13.0, PostgreSQL 18 with pgvector 0.8.7 and schema `0028_chilli_jobs`. Browser tests use Edge at 1280 and 360 pixels against the built frontend, synthetic test accounts and a deterministic weather provider. The installed frontend bundle is `index-dLpbGq4H.js`. The private application runs on loopback. The separate HTTPS smoke used a short-lived loopback certificate and the production API settings against a disposable database. It verified the built farm route, authentication and secure refresh cookies, origin denial, farm creation and reading, and worker database readiness.
@@ -23,6 +110,8 @@ npm.cmd --prefix frontend run test:e2e
 
 All 345 backend tests and all 79 frontend tests passed, along with lint, formatting, Alembic drift and the production build. The complete built Edge suite passed 30 desktop and 30 mobile journeys across farmer, advisor and administrator workflows. It skipped two opt-in live Gemini browser cases. The production rerun verifies that development-only demo controls are absent and includes opening the PDF version card and publishing a long-titled replacement at 320 px. Local development demo controls were exercised separately.
 
+GitHub Actions passed its backend, frontend and Chromium browser jobs for candidate `424f6d7b06afdb40abc840e602deabbf3ac7a5cf`. The verification record below includes local measurements collected after that candidate was published. [GitHub Actions run 45649059732](https://github.com/Ushan-Srinuka/WagaMaga/actions/runs/45649059732)
+
 The benchmark launches ten concurrent signed-in synthetic farmers over the FastAPI ASGI test client and live PostgreSQL. It times farm creation, reading and editing after authentication, excluding TLS, file transfers and AI. Parallel integration/browser runs must use different `_test` databases. The restore seed must run immediately before the synthetic restore script when sharing a test database.
 
 | Local CRUD sample | Requests | p50 | p95 |
@@ -32,7 +121,7 @@ The benchmark launches ten concurrent signed-in synthetic farmers over the FastA
 | Read | 100 | 187.7 ms | 269.0 ms |
 | Edit | 100 | 243.8 ms | 314.5 ms |
 
-There were 100 synthetic farms and zero indexed passages in this sample. The HTTP paths and PostgreSQL transactions were measured with ten users. The full-corpus load case remains open.
+There were 100 synthetic farms and zero indexed passages in the baseline. A separate run with the same ten-user, 300-request workload plus 5,000 synthetic stored passages measured p50 at 197.6 ms and p95 at 344.8 ms. The latter sample used a padded fixture catalog in a disposable database to test CRUD at the specified catalog size. The timings cover the farm endpoints and PostgreSQL transactions.
 
 The live AI sample ran eight separate chat jobs on the fictional corpus with the configured Gemini embedding and quote endpoints. Timing began at job submission and ended after reading status and history. The test triggered the worker immediately and excluded browser polling and idle-worker wait. p50 was 3.53 s and p95 was 4.93 s across all eight terminal outcomes. Four returned correct citations, two correctly abstained, and two answerable questions ended with retryable `AI_UNAVAILABLE`. These values include failures and describe a small local sample. To reproduce the opt-in provider sample, set `WAGAMAGA_RAG_LIVE_EVAL=1` for `tests/integration/test_farm_api.py::test_evaluate_pdf_chat_32_cases` with a configured Gemini key and available quota. Only fictional fixture passages and questions are sent.
 
@@ -55,9 +144,27 @@ The private on-demand app backup restored in 2.6 seconds after copying the archi
 | AT09 | PostgreSQL concurrency, identical replays and injected transaction failure passed. Tests verify single execution or full rollback. |
 | AT10 | Deterministic stale and unavailable forecast, notice replay and closed-task suppression passed. |
 | AT11 | Private conversation deletion passed. Independent planner decisions survive deletion. |
-| AT12 | Partial. Local mobile, HTTPS, latency, simulated failure, worker recovery and restore were exercised. Two of eight live AI jobs ended unavailable. Full-corpus load, scheduled recovery-point evidence and CI on this candidate remain open. |
+| AT12 | Verified for the private Windows installation. Mobile, HTTPS, latency, simulated failure, worker recovery, restore and CI checks completed. Two of eight live AI jobs ended with a retryable provider error. A periodic backup recovery point remains unverified. |
 
-V1 sign-off remains open while the real-source answer-quality and final delivery criteria are outstanding. Simulated farmer and advisor accounts are used for release verification. The farmer advisory pilot remains disabled.
+Eleven of the twelve scenarios have verification evidence for the private installation. AT04 remains open for approved real-source evaluation and independent assessment of claim support and applicability, so V1 sign-off remains open. Simulated farmer and advisor accounts are used for release verification. The farmer advisory pilot remains disabled.
+
+## Screened knowledge and candidate evaluation
+
+Use the disposable PostgreSQL test database. The local candidate runner needs the two publisher copies listed in the dataset under `.data/knowledge-import`. The SHA-256 checks prevent evaluating a different edition. The screen and upload tests use synthetic records and a deterministic scanner response. The candidate evaluation makes zero provider calls. [Candidate baseline](../evaluation/reports/chilli-real-pdf-candidate-2026-11-25.md)
+
+```powershell
+$cache = Join-Path (Get-Location) '.tools/pytest-screened-knowledge'
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" tests/unit/test_clamav.py tests/unit/test_advisory_release.py tests/integration/test_knowledge_demo.py
+.\scripts\uv.ps1 run pytest --require-database -o "cache_dir=$cache" -s tests/evaluate_chilli_candidate.py
+npm.cmd --prefix frontend run build
+$env:PLAYWRIGHT_CHANNEL='msedge'
+$env:E2E_API_PORT='18000'
+$env:E2E_WEB_PORT='15173'
+$env:E2E_BUILT_FRONTEND='1'
+npm.cmd --prefix frontend run test:e2e -- --grep=assigns
+```
+
+The PostgreSQL regression suite passed 352 tests and the frontend suite passed 79. The built Edge workflow passed at desktop and mobile sizes. An administrator uploaded and assigned a version, the advisor read both pages and approved it, and the administrator published it. The production-mode API check exercises rejection, outage and retry, assignment revocation, stale decisions and screened citation access against disposable PostgreSQL. Alembic reported no schema drift. A deployed ClamAV daemon and independent live-model quality evaluation still require verification.
 
 ## V1 diary, review screens and accessibility
 
@@ -155,6 +262,21 @@ npm.cmd --prefix frontend run test:e2e -- farms.spec.ts --grep 'farmer (revises 
 ```
 
 The tests verify owner-only chronological history, exclusion of unexecuted plans, concurrent reminder deduplication, and suppression after task completion or a due date change. The revision browser journey also verifies that the diary shows the saved date change.
+
+## Advisor inbox and review forms
+
+On 26 November 2026, all 81 frontend tests, TypeScript and ESLint passed. The two focused PostgreSQL tests verified the pending and reviewed filters, assignment timestamps and access denial on PDF direct links. All four targeted Edge journeys passed at 1280 px and 360 px. They cover plan referral, stale-decision recovery, farmer confirmation, PDF page jumping, draft reason preservation and the reviewed PDF list. The isolated Windows test servers required manual cleanup after the journeys. Run the following from the repository root:
+
+```powershell
+Push-Location backend
+& .\.venv\Scripts\python.exe -m pytest --require-database -q tests/integration/test_farm_api.py::test_weekly_suggestion_requires_assigned_clearance_when_stage_is_missing tests/integration/test_knowledge_demo.py::test_production_pdf_requires_screening_and_a_version_bound_advisor_decision
+Pop-Location
+$env:PLAYWRIGHT_CHANNEL = 'msedge'
+$env:E2E_API_PORT = '18080'
+$env:E2E_WEB_PORT = '15173'
+npm.cmd --prefix frontend run test:e2e -- -g 'farmer revises an advisor suggestion|administrator assigns a PDF version'
+Remove-Item Env:PLAYWRIGHT_CHANNEL, Env:E2E_API_PORT, Env:E2E_WEB_PORT
+```
 
 ## Weekly revisions, notices and selected changes
 

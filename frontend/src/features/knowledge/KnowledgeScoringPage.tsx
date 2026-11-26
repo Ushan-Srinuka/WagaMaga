@@ -18,6 +18,7 @@ export default function KnowledgeScoringPage() {
     cases: Score[]
     ready: boolean
     released: boolean
+    independent_review_pending: boolean
   }>(`${root}/summary`)
   const save = useSave((error) =>
     error instanceof Error
@@ -58,6 +59,11 @@ export default function KnowledgeScoringPage() {
                   ? 'Ready for pilot release.'
                   : 'Farmer pilot awaiting checks.'}
             </p>
+            {record.data.independent_review_pending && (
+              <p>
+                The independent agricultural quality review is still pending.
+              </p>
+            )}
             {record.data.cases.map((item) => (
               <article className="panel" key={item.case_id}>
                 <h2>
