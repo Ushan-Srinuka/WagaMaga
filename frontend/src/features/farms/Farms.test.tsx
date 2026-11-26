@@ -242,7 +242,9 @@ it('retries a failed farm read before offering setup', async () => {
 })
 it('opens the next field note even when the crop already has notes', async () => {
   chooseCrop()
-  expect(await screen.findByLabelText('What did you see?')).toHaveFocus()
+  await waitFor(() =>
+    expect(screen.getByLabelText('What did you see?')).toHaveFocus(),
+  )
   expect(screen.getByLabelText('Observed at (device time)')).not.toHaveValue('')
   expect(screen.queryByRole('heading', { name: 'Farm tasks' })).toBeNull()
 })
