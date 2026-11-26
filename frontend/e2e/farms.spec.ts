@@ -1799,7 +1799,8 @@ test('home opens crop chat, repeat field notes and today’s task', async ({
   })
   expect(task.ok()).toBe(true)
   await login(page, owner.email)
-  await page.getByRole('link', { name: 'Ask Chilli AI', exact: true }).click()
+  const homeTools = page.getByRole('navigation', { name: 'Farm tools' })
+  await homeTools.getByRole('link', { name: 'Ask Chilli AI' }).click()
   await page.getByRole('link', { name: 'Ask about my crop' }).click()
   await expect(
     page.getByRole('heading', { name: 'Ask Chilli AI about this crop' }),
@@ -1809,7 +1810,7 @@ test('home opens crop chat, repeat field notes and today’s task', async ({
     .getByRole('link', { name: 'Home', exact: true })
   await home.click()
   for (const note of ['Yellow leaves on two plants', 'Checked the other row']) {
-    await page
+    await homeTools
       .getByRole('link', { name: 'Add a field note', exact: true })
       .click()
     await page.getByLabel('What did you see?').fill(note)
@@ -1817,14 +1818,14 @@ test('home opens crop chat, repeat field notes and today’s task', async ({
     await expect(page.getByText(note, { exact: true })).toBeVisible()
     await home.click()
   }
-  await page.getByRole('link', { name: 'Planner', exact: true }).click()
+  await homeTools.getByRole('link', { name: 'Planner', exact: true }).click()
   const todayTasks = page.getByRole('region', { name: `Tasks for ${today}` })
   await expect(todayTasks).toContainText('Check the chilli bed')
   await todayTasks.getByRole('button', { name: 'Mark done' }).click()
   await expect(page.getByText('Task completed.', { exact: true })).toBeVisible()
   await home.click()
   await expect(
-    page.getByRole('link', { name: 'Ask Chilli AI' }),
+    homeTools.getByRole('link', { name: 'Ask Chilli AI' }),
   ).toBeInViewport()
   await fit(page)
 })
